@@ -132,12 +132,8 @@ FFTGrid<T, DIM>::FFTGrid(IntType num_threads, IndexType shape, int sign,
     : plan_(nullptr, [](void *) {}), padding_(padding) {
 
   auto paddedShape = shape;
-  if constexpr (DIM == 1) {
-    paddedShape += 2 * padding;
-  } else {
-    for (IntType d = 0; d < DIM; ++d) {
-      paddedShape[d] += 2 * padding[d];
-    }
+  for (IntType d = 0; d < DIM; ++d) {
+    paddedShape[d] += 2 * padding[d];
   }
 
   padded_grid_.reset(paddedShape);
@@ -149,7 +145,7 @@ FFTGrid<T, DIM>::FFTGrid(IntType num_threads, IndexType shape, int sign,
   // fftw is row-major. Stored grid is coloumn-major.
   std::array<int, DIM> n;
   if constexpr (DIM == 1) {
-    n[0] = grid_.shape();
+    n[0] = grid_.shape(0);
   } else if constexpr (DIM == 2){
     n[0] = grid_.shape(1);
     n[1] = grid_.shape(0);
@@ -161,7 +157,7 @@ FFTGrid<T, DIM>::FFTGrid(IntType num_threads, IndexType shape, int sign,
 
   std::array<int, DIM> nembed;
   if constexpr (DIM == 1) {
-    nembed[0] = grid_.shape();
+    nembed[0] = grid_.shape(0);
   } else if constexpr (DIM == 2){
     nembed[0] = grid_.shape(1);
     nembed[1] = grid_.strides(1);

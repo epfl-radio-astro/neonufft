@@ -423,11 +423,7 @@ private:
             (spread_grid_.shape(d) != grid_info_.padded_spread_grid_size[d]);
       }
       if (new_grid) {
-        if constexpr (DIM == 1) {
-          spread_grid_.reset(grid_info_.padded_spread_grid_size[0]);
-        } else {
-          spread_grid_.reset(grid_info_.padded_spread_grid_size);
-        }
+        spread_grid_.reset(grid_info_.padded_spread_grid_size);
       }
     }
 
@@ -442,13 +438,7 @@ private:
         new_grid |= (grid_info_.fft_grid_size[d] != fft_grid_.shape(d));
       }
       if (new_grid) {
-        if constexpr (DIM == 1) {
-          fft_grid_ = FFTGrid<T, DIM>(opt_.num_threads,
-                                      grid_info_.fft_grid_size[0], sign_);
-        } else {
-          fft_grid_ = FFTGrid<T, DIM>(opt_.num_threads,
-                                      grid_info_.fft_grid_size, sign_);
-        }
+        fft_grid_ = FFTGrid<T, DIM>(opt_.num_threads, grid_info_.fft_grid_size, sign_);
       }
     }
 

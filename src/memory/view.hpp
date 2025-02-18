@@ -38,29 +38,148 @@
 
 namespace neonufft {
 
+template <IntType DIM>
+struct IndexStruct;
+
+template <>
+struct IndexStruct<0> {
+};
+
+template <>
+struct IndexStruct<1> {
+  static inline constexpr IntType DIM = 1;
+
+  IndexStruct() noexcept : values{0} {}
+
+  IndexStruct(IntType idx) noexcept : values{idx} {}
+
+  IndexStruct(std::array<IntType, 1> idx) noexcept : values{idx[0]} {}
+
+  inline auto operator[](const IntType& index) const noexcept -> const IntType& {
+    assert(index < 1);
+    return values[index];
+  }
+
+  inline auto operator[](const IntType& index) noexcept -> IntType& {
+    assert(index < 1);
+    return values[index];
+  }
+
+  inline auto fill(const IntType& val) noexcept -> void { values[0] = val; }
+
+  inline auto begin() noexcept -> IntType* { return values; }
+  inline auto begin() const noexcept -> const IntType* { return values; }
+
+  inline auto end() noexcept -> IntType* { return values + DIM; }
+  inline auto end() const noexcept -> const IntType* { return values + DIM; }
+
+  inline auto to_array() const noexcept -> std::array<IntType, DIM> {
+    return std::array<IntType, DIM>{values[0]};
+  }
+
+  IntType values[1];
+};
+
+template <>
+struct IndexStruct<2> {
+  static inline constexpr IntType DIM = 2;
+
+  IndexStruct() noexcept : values{0, 0} {}
+
+  IndexStruct(IntType idx0, IntType idx1) noexcept: values{idx0, idx1} {}
+
+  IndexStruct(std::array<IntType, DIM> idx) noexcept : values{idx[0], idx[1]} {}
+
+  inline auto operator[](const IntType& index) const noexcept -> const IntType& {
+    assert(index < DIM);
+    return values[index];
+  }
+
+  inline auto operator[](const IntType& index) noexcept -> IntType& {
+    assert(index < DIM);
+    return values[index];
+  }
+
+  inline auto fill(const IntType& val) noexcept -> void {
+    values[0] = val;
+    values[1] = val;
+  }
+
+  inline auto begin() noexcept -> IntType* { return values; }
+  inline auto begin() const noexcept -> const IntType* { return values; }
+
+  inline auto end() noexcept -> IntType* { return values + DIM; }
+  inline auto end() const noexcept -> const IntType* { return values + DIM; }
+
+  inline auto to_array() const noexcept -> std::array<IntType, DIM> {
+    return std::array<IntType, DIM>{values[0], values[1]};
+  }
+
+  IntType values[DIM];
+};
+
+template <>
+struct IndexStruct<3> {
+  static inline constexpr IntType DIM = 3;
+
+  IndexStruct() noexcept : values{0, 0, 0} {}
+
+  IndexStruct(IntType idx0, IntType idx1, IntType idx2) noexcept: values{idx0, idx1, idx2} {}
+
+  IndexStruct(std::array<IntType, DIM> idx) noexcept : values{idx[0], idx[1], idx[2]} {}
+
+  inline auto operator[](const IntType& index) const noexcept -> const IntType& {
+    assert(index < DIM);
+    return values[index];
+  }
+
+  inline auto operator[](const IntType& index) noexcept -> IntType& {
+    assert(index < DIM);
+    return values[index];
+  }
+
+  inline auto fill(const IntType& val) noexcept -> void {
+    values[0] = val;
+    values[1] = val;
+    values[2] = val;
+  }
+
+  inline auto begin() noexcept -> IntType* { return values; }
+  inline auto begin() const noexcept -> const IntType* { return values; }
+
+  inline auto end() noexcept -> IntType* { return values + DIM; }
+  inline auto end() const noexcept -> const IntType* { return values + DIM; }
+
+  inline auto to_array() const noexcept -> std::array<IntType, DIM> {
+    return std::array<IntType, DIM>{values[0], values[1], values[2]};
+  }
+
+  IntType values[DIM];
+};
+
 namespace impl {
 // Use specialized structs to compute index, since some compiler do not properly optimize otherwise
-template <std::size_t DIM, IntType N>
+template <IntType DIM, IntType N>
 struct ViewIndexHelper {
-  inline static constexpr auto eval(const std::array<IntType, DIM>& indices,
-                                    const std::array<IntType, DIM>& strides) -> IntType {
+  inline static constexpr auto eval(const IndexStruct<DIM>& indices,
+                                    const IndexStruct<DIM>& strides) -> IntType {
     return indices[N] * strides[N] + ViewIndexHelper<DIM, N - 1>::eval(indices, strides);
   }
 };
 
-template <std::size_t DIM>
+template <IntType DIM>
 struct ViewIndexHelper<DIM, 0> {
-  inline static constexpr auto eval(const std::array<IntType, DIM>& indices,
-                                    const std::array<IntType, DIM>&) -> IntType {
+  inline static constexpr auto eval(const IndexStruct<DIM>& indices,
+                                    const IndexStruct<DIM>&) -> IntType {
     static_assert(DIM >= 1);
     return indices[0];
   }
 };
 
-template <std::size_t DIM>
+template <IntType DIM>
 struct ViewIndexHelper<DIM, 1> {
-  inline static constexpr auto eval(const std::array<IntType, DIM>& indices,
-                                    const std::array<IntType, DIM>& strides) -> IntType {
+  inline static constexpr auto eval(const IndexStruct<DIM>& indices,
+                                    const IndexStruct<DIM>& strides) -> IntType {
     static_assert(DIM >= 2);
     return indices[0] + indices[1] * strides[1];
   }
@@ -71,39 +190,34 @@ struct ViewIndexHelper<DIM, 1> {
 /*
  * Helper functions
  */
-template <std::size_t DIM>
-inline constexpr auto view_index(const std::array<IntType, DIM>& indices,
-                                  const std::array<IntType, DIM>& strides) -> IntType {
+template <IntType DIM>
+inline constexpr auto view_index(const IndexStruct<DIM>& indices,
+                                  const IndexStruct<DIM>& strides) -> IntType {
   return impl::ViewIndexHelper<DIM, DIM - 1>::eval(indices, strides);
 }
 
 inline constexpr auto view_index(IntType index, IntType) -> IntType { return index; }
 
-inline constexpr auto view_size(IntType shape) -> IntType { return shape; }
+// inline constexpr auto view_size(IntType shape) -> IntType { return shape; }
 
-template <std::size_t DIM>
-inline constexpr auto view_size(const std::array<IntType, DIM>& shape) -> IntType {
+template <IntType DIM>
+inline constexpr auto view_size(const IndexStruct<DIM>& shape) -> IntType {
   return std::reduce(shape.begin(), shape.end(), IntType(1), std::multiplies{});
 }
 
 
 
-template <typename T, std::size_t DIM>
+template <typename T, IntType DIM>
 class ConstView {
 public:
   using ValueType = T;
   using BaseType = ConstView<T, DIM>;
-  using IndexType = std::conditional_t<DIM == 1, IntType, std::array<IntType, DIM>>;
+  using IndexType = IndexStruct<DIM>;
   using SliceType = ConstView<T, DIM - 1>;
 
   ConstView() {
-    if constexpr(DIM==1) {
-      shape_ = 0;
-      strides_ = 1;
-    } else {
-      shape_.fill(0);
-      strides_.fill(1);
-    }
+    shape_.fill(0);
+    strides_.fill(1);
   }
 
   ConstView(const T* ptr, const IndexType& shape, const IndexType& strides)
@@ -136,20 +250,14 @@ public:
 
   inline auto shape(IntType i) const noexcept -> IntType {
     assert(i < DIM);
-    if constexpr (DIM == 1)
-      return shape_;
-    else
-      return shape_[i];
+    return shape_[i];
   }
 
   inline auto strides() const noexcept -> const IndexType& { return strides_; }
 
   inline auto strides(IntType i) const noexcept -> IntType {
     assert(i < DIM);
-    if constexpr (DIM == 1)
-      return strides_;
-    else
-      return strides_[i];
+    return strides_[i];
   }
 
   template <typename F>
@@ -178,7 +286,7 @@ protected:
   inline auto compare_elements(const IndexType& left, const IndexType& right,
                                UnaryTransformOp&& op) const -> bool {
     if constexpr (DIM == 1) {
-      return op(left, right);
+      return op(left[0], right[0]);
     } else {
       return std::transform_reduce(left.begin(), left.end(), right.begin(), true,
                                    std::logical_and{}, std::forward<UnaryTransformOp>(op));
@@ -231,7 +339,7 @@ protected:
   const T* constPtr_ = nullptr;
 };
 
-template <typename T, std::size_t DIM>
+template <typename T, IntType DIM>
 class View : public ConstView<T, DIM> {
 public:
   using ValueType = T;
@@ -271,7 +379,7 @@ protected:
   View(const BaseType& v) : BaseType(v) {}
 };
 
-template <typename T, std::size_t DIM>
+template <typename T, IntType DIM>
 class HostView : public View<T, DIM> {
 public:
   using ValueType = T;
@@ -307,7 +415,7 @@ public:
   auto zero() -> void {
     if (this->totalSize_) {
       if constexpr (DIM <= 1) {
-        std::memset(this->data(), 0, this->shape_ * sizeof(T));
+        std::memset(this->data(), 0, this->shape_[0] * sizeof(T));
       } else {
         for (IntType i = 0; i < this->shape_[DIM - 1]; ++i) this->slice_view(i).zero();
       }
@@ -327,7 +435,7 @@ protected:
 };
 
 
-template <typename T, std::size_t DIM>
+template <typename T, IntType DIM>
 class ConstHostView : public ConstView<T, DIM> {
 public:
   using ValueType = T;

@@ -68,11 +68,7 @@ public:
     if (this->totalSize_) {
       const auto inner_padding = memory::padding_for_vectorization(sizeof(T), this->shape(0));
       auto padded_shape = shape;
-      if constexpr (DIM == 1) {
-        padded_shape += inner_padding;
-      } else {
-        padded_shape[0] += inner_padding;
-      }
+      padded_shape[0] += inner_padding;
       const auto allocate_size = view_size(padded_shape);
       auto ptr =
           static_cast<T *>(memory::allocate_aligned(allocate_size * sizeof(T)));

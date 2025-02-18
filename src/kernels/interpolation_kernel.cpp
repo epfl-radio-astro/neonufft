@@ -136,12 +136,7 @@ HWY_ATTR void interpolation_kernel(const KER &kernel,
 
   std::array<T, DIM> x;
   std::array<IntType, DIM> idx_init;
-  std::array<IntType, DIM> grid_size;
-  if constexpr (DIM == 1) {
-    grid_size[0] = grid.shape(0);
-  } else {
-    grid_size = grid.shape();
-  }
+  std::array<IntType, DIM> grid_size = grid.shape().to_array();
 
   // loop over nu points
   for (IntType idx_nu = 0; idx_nu < n_out; idx_nu += 1) {

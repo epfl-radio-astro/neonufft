@@ -53,25 +53,17 @@ public:
       correction_factors[d] = correction_factors_[d].data();
     }
 
-    HostView<std::complex<T>, DIM> out_view;
-    if constexpr (DIM == 1) {
-      out_view = HostView<std::complex<T>, DIM>(out, modes_[0], out_strides[0]);
-    } else {
-      out_view = HostView<std::complex<T>, DIM>(out, modes_, out_strides);
-    }
+    HostView<std::complex<T>, DIM> out_view(out, modes_, out_strides);
 
-    spread<T, DIM>(opt_.kernel_type, kernel_param_, nu_loc_.shape(0),
-                   nu_loc_.data(), in, nullptr,
-                   std::array<IntType, DIM>{fft_grid_.shape()},
-                   fft_grid_.padded_view());
+    spread<T, DIM>(opt_.kernel_type, kernel_param_, nu_loc_.shape(0), nu_loc_.data(), in, nullptr,
+                   fft_grid_.shape().to_array(), fft_grid_.padded_view());
 
     fold_padding<T, DIM>(kernel_param_.n_spread, fft_grid_.padded_view());
 
     fft_grid_.transform();
 
-    downsample<T, DIM>(opt_.order, {fft_grid_.shape()}, fft_grid_.view(),
-                       {modes_}, correction_factors, out_view);
-
+    downsample<T, DIM>(opt_.order, fft_grid_.shape().to_array(), fft_grid_.view(), {modes_},
+                       correction_factors, out_view);
   }
 
   void transform_type_2(const std::complex<T> *in,
@@ -84,13 +76,7 @@ public:
       correction_factor_views[dim] = correction_factors_[dim].view();
     }
 
-    ConstHostView<std::complex<T>, DIM> in_view;
-    if constexpr (DIM == 1) {
-      in_view =
-          ConstHostView<std::complex<T>, DIM>(in, modes_[0], in_strides[0]);
-    } else {
-      in_view = ConstHostView<std::complex<T>, DIM>(in, modes_, in_strides);
-    }
+    ConstHostView<std::complex<T>, DIM> in_view(in, modes_, in_strides);
 
     upsample<T, DIM>(opt_.order, in_view, correction_factor_views,
                      fft_grid_.view());
@@ -124,14 +110,9 @@ public:
     }
     if (new_grid) {
       const auto padding = spread_padding(kernel_param_.n_spread);
-      if constexpr (DIM == 1) {
-        fft_grid_ = FFTGrid<T, DIM>(opt_.num_threads, fft_grid_size[0], sign_, padding);
-      } else {
-        typename decltype(fft_grid_)::IndexType pad;
-        pad.fill(padding);
-        fft_grid_ =
-            FFTGrid<T, DIM>(opt_.num_threads, fft_grid_size, sign_, pad);
-      }
+      typename decltype(fft_grid_)::IndexType pad;
+      pad.fill(padding);
+      fft_grid_ = FFTGrid<T, DIM>(opt_.num_threads, fft_grid_size, sign_, pad);
 
       // recompute correction factor for kernel windowing
       // we compute the inverse to use multiplication during execution
