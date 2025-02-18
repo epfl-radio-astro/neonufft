@@ -34,7 +34,7 @@ auto padding_for_vectorization(std::size_t type_size, std::size_t size)
 // An array with padding of NEONUFFT_MAX_VEC_LENGTH and guaranteed alignment of
 // each inner dimension
 template <typename T, std::size_t DIM>
-class HostArray : public HostView<T, DIM> {
+class HostArray {
 public:
   static_assert(std::is_trivially_destructible_v<T>);
   static_assert(sizeof(T) <= NEONUFFT_MAX_VEC_LENGTH);
@@ -46,11 +46,10 @@ public:
 #endif
 
   using ValueType = T;
-  using BaseType = HostView<T, DIM>;
-  using IndexType = typename View<T, DIM>::IndexType;
+  using IndexType = IndexArray<DIM>;
   using SliceType = HostArray<T, DIM - 1>;
 
-  HostArray() : BaseType(), data_(nullptr, &memory::deallocate_aligned){};
+  HostArray() : data_(nullptr, &memory::deallocate_aligned) {};
 
   HostArray(const HostArray&) = delete;
 
@@ -60,13 +59,21 @@ public:
 
   auto operator=(HostArray&& b) noexcept -> HostArray& = default;
 
+  operator ConstView<T, DIM>() const { return v_; };
+
+  operator View<T, DIM>() const { return v_; };
+
+  operator ConstHostView<T, DIM>() const { return v_; };
+
+  operator HostView<T, DIM>() const { return v_; };
+
   // Allocate array of given shape, such that the inner dimension is padded for
   // alignment of each inner slice.
   HostArray(const IndexType &shape)
-      : BaseType(nullptr, shape, shape_to_stride(shape)),
+      : v_(nullptr, shape, shape_to_stride(shape)),
         data_(nullptr, &memory::deallocate_aligned) {
-    if (this->totalSize_) {
-      const auto inner_padding = memory::padding_for_vectorization(sizeof(T), this->shape(0));
+    if (v_.size()) {
+      const auto inner_padding = memory::padding_for_vectorization(sizeof(T), v_.shape(0));
       auto padded_shape = shape;
       padded_shape[0] += inner_padding;
       const auto allocate_size = view_size(padded_shape);
@@ -76,30 +83,56 @@ public:
 
       // set to 0 to avoid issues with nan and to initialize memory page
       std::memset(ptr, 0, allocate_size * sizeof(T));
-      this->constPtr_ = ptr;
+      this->v_ = HostView<T, DIM>(ptr, shape, shape_to_stride(shape));
     }
   };
 
   inline auto data_handler() const noexcept -> const std::shared_ptr<void>& { return data_; }
 
-  inline auto view() -> HostView<T, DIM> { return *this; }
+  inline auto view() -> HostView<T, DIM> { return v_; }
 
-  inline auto view() const -> ConstHostView<T, DIM> { return *this; }
-
-  // will never deallocate / allocate
-  inline auto shrink(const IndexType& newShape) -> HostArray<T, DIM>& {
-    this->shrink_impl(newShape);
-    return *this;
-  }
+  inline auto view() const -> ConstHostView<T, DIM> { return v_; }
 
   // resize and set to 0
   inline auto reset(const IndexType &newShape) -> void {
-    if(this->compare_elements(newShape, this->shape(), std::equal_to{})) {
-      this->zero();
+    if (impl::compare_elements(newShape, v_.shape(), std::equal_to{})) {
+      v_.zero();
     } else {
       *this = HostArray<T, DIM>(newShape);
     }
   }
+
+  inline auto operator[](const IndexType& index) const noexcept -> const T& { return v_[index]; }
+
+  inline auto operator[](const IndexType& index) noexcept -> T& { return v_[index]; }
+
+  inline auto data() noexcept -> T* { return const_cast<T*>(v_.data()); }
+
+  inline auto data() const noexcept -> const T* { return v_.data(); }
+
+  inline auto size() const noexcept -> IntType { return v_.size(); }
+
+  inline auto size_in_bytes() const noexcept -> IntType { return v_.size_in_bytes(); }
+
+  inline auto is_contiguous() const noexcept -> bool { return v_.is_contiguous(); }
+
+  inline auto shape() const noexcept -> const IndexType& { return v_.shape(); }
+
+  inline auto shape(IntType i) const noexcept -> IntType { return v_.shape(i); }
+
+  inline auto strides() const noexcept -> const IndexType& { return v_.strides(); }
+
+  inline auto strides(IntType i) const noexcept -> IntType { return v_.strides(i); }
+
+  inline auto slice_view(IntType outer_index) const -> SliceType {
+    return SliceType(v_.slice_view(outer_index));
+  }
+
+  inline auto sub_view(const IndexType& offset, const IndexType& shape) const -> HostView<T, DIM> {
+    return HostView(v_.sub_view(offset, shape));
+  }
+
+  inline auto zero() -> void { v_.zero(); }
 
 private:
   static inline auto shape_to_stride(const IndexType& shape) -> IndexType {
@@ -117,6 +150,8 @@ private:
     }
   }
 
+
+  HostView<T, DIM> v_;
   std::unique_ptr<T, decltype(&memory::deallocate_aligned)> data_;
 };
 
