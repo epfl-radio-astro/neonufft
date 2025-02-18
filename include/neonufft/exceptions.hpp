@@ -78,6 +78,18 @@ public:
   }
 };
 
+class NEONUFFT_EXPORT GPUError : public GenericError {
+public:
+  GPUError() : GenericError("Neonufft:: Not implemented") {}
+
+  // must be a string literal
+  GPUError(const char *msg) : GenericError(msg) {}
+
+  NeonufftError error_code() const noexcept override {
+    return NeonufftError::NEONUFFT_GPU_ERROR;
+  }
+};
+
 /*! \cond PRIVATE */
 } // namespace neonufft
 /*! \endcond */

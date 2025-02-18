@@ -44,6 +44,11 @@ set_target_properties(neonufft PROPERTIES VISIBILITY_INLINES_HIDDEN TRUE CXX_VIS
 # add alias target
 add_library(neonufft::neonufft ALIAS neonufft)
 
+# include GPU library
+if(NEONUFFT_CUDA OR NEONUFFT_ROCM)
+	add_subdirectory(gpu)
+endif()
+
 # generate export header to control symbol visibility
 include(GenerateExportHeader)
 generate_export_header(neonufft)
@@ -93,7 +98,7 @@ configure_file(${PROJECT_SOURCE_DIR}/cmake/neonufftTargets.cmake
 
 # installation commands
 if(NEONUFFT_INSTALL_LIB)
-	install(TARGETS neonufft DESTINATION ${CMAKE_INSTALL_LIBDIR} EXPORT neonufftTargets)
+	install(TARGETS neonufft neonufft_gpu DESTINATION ${CMAKE_INSTALL_LIBDIR} EXPORT neonufftTargets)
 	install(DIRECTORY ${PROJECT_SOURCE_DIR}/include/neonufft DESTINATION ${CMAKE_INSTALL_INCLUDEDIR} FILES_MATCHING PATTERN "*.h" PATTERN "*.hpp" PATTERN "*.f90")
 	install(FILES ${PROJECT_BINARY_DIR}/neonufft/config.h "${PROJECT_BINARY_DIR}/neonufft/neonufft_export.h" DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/neonufft)
 	install(EXPORT neonufftTargets NAMESPACE neonufft:: DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/neonufft FILE ${NEONUFFT_TARGETS_FILE})

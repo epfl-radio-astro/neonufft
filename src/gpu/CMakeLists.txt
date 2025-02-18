@@ -1,0 +1,32 @@
+set(NEONUFFT_SOURCE_FILES
+	plan.cpp
+	)
+
+
+add_library(neonufft_gpu_objects OBJECT ${NEONUFFT_SOURCE_FILES})
+
+# make static libraries linkable into shared ones
+set_property(TARGET neonufft_gpu_objects PROPERTY POSITION_INDEPENDENT_CODE ON)
+
+target_compile_options(neonufft_gpu_objects PRIVATE ${NEONUFFT_FLAGS})
+target_include_directories(neonufft_gpu_objects PRIVATE ${NEONUFFT_INCLUDE_DIRS})
+target_link_libraries(neonufft_gpu_objects PRIVATE ${NEONUFFT_GPU_EXTERNAL_LIBS})
+target_link_libraries(neonufft_gpu_objects PRIVATE ${NEONUFFT_GPU_EXTERNAL_LIBS_PUBLIC})
+target_include_directories(neonufft_gpu_objects INTERFACE $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>  $<BUILD_INTERFACE:${PROJECT_BINARY_DIR}>)
+set_target_properties(neonufft_gpu_objects PROPERTIES VISIBILITY_INLINES_HIDDEN TRUE CXX_VISIBILITY_PRESET hidden)
+
+
+#shared library
+add_library(neonufft_gpu $<TARGET_OBJECTS:neonufft_gpu_objects>)
+
+set_property(TARGET neonufft_gpu PROPERTY VERSION ${NEONUFFT_VERSION})
+set_property(TARGET neonufft_gpu PROPERTY SOVERSION ${NEONUFFT_SO_VERSION})
+
+target_link_libraries(neonufft_gpu PRIVATE ${NEONUFFT_GPU_EXTERNAL_LIBS})
+target_link_libraries(neonufft_gpu PUBLIC ${NEONUFFT_GPU_EXTERNAL_LIBS_PUBLIC} neonufft::neonufft)
+target_include_directories(neonufft_gpu INTERFACE $<INSTALL_INTERFACE:include>) # for install(EXPORT ...)
+target_include_directories(neonufft_gpu INTERFACE $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>  $<BUILD_INTERFACE:${PROJECT_BINARY_DIR}>) # for export(...)
+set_target_properties(neonufft_gpu PROPERTIES VISIBILITY_INLINES_HIDDEN TRUE CXX_VISIBILITY_PRESET hidden)
+
+# add alias target
+add_library(neonufft::neonufft_gpu ALIAS neonufft_gpu)
