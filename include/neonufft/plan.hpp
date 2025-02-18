@@ -1,6 +1,7 @@
 #pragma once
 
 #include <neonufft/config.h>
+// ---
 
 #include <neonufft/types.hpp>
 #include <neonufft/enums.h>

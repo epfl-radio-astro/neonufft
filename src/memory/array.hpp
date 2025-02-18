@@ -95,7 +95,7 @@ public:
 
   // resize and set to 0
   inline auto reset(const IndexType &newShape) -> void {
-    if (impl::compare_elements(newShape, v_.shape(), std::equal_to{})) {
+    if (impl::all_equal(newShape, v_.shape())) {
       v_.zero();
     } else {
       *this = HostArray<T, DIM>(newShape);
@@ -145,7 +145,6 @@ private:
       for (IntType i = 2; i < DIM; ++i) {
         strides[i] = shape[i - 1] * strides[i - 1];
       }
-      strides[0] = 1;
       return strides;
     }
   }

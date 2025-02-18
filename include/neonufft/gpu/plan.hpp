@@ -12,6 +12,8 @@
 #include <neonufft/gpu/types.hpp>
 #include <neonufft/plan.hpp>
 #include <neonufft/types.hpp>
+#include <neonufft/allocator.hpp>
+#include <neonufft/gpu/device_allocator.hpp>
 #include <type_traits>
 #include <utility>
 
@@ -25,9 +27,9 @@ public:
   static_assert(std::is_same_v<T, float> || std::is_same_v<T, double>);
   static_assert(DIM == 1 || DIM == 2 || DIM == 3);
 
-
-  Plan(Options opt, int sign, IntType num_nu, std::array<const T *, DIM> loc,
-       std::array<IntType, DIM> modes, StreamType stream);
+  Plan(Options opt, int sign, IntType num_nu, std::array<const T*, DIM> loc,
+       std::array<IntType, DIM> modes, StreamType stream,
+       std::shared_ptr<Allocator> device_alloc = std::make_shared<DeviceAllocator>());
 
   void transform_type_1(const ComplexType<T> *in, ComplexType<T> *out,
                         std::array<IntType, DIM> out_strides);
@@ -55,13 +57,13 @@ public:
                                         std::array<T, DIM> output_min,
                                         std::array<T, DIM> output_max);
 
-  PlanT3(Options opt, int sign, IntType num_in,
-         std::array<const T *, DIM> input_points, IntType num_out,
-         std::array<const T *, DIM> output_points, StreamType stream);
+  PlanT3(Options opt, int sign, IntType num_in, std::array<const T*, DIM> input_points,
+         IntType num_out, std::array<const T*, DIM> output_points, StreamType stream,
+         std::shared_ptr<Allocator> device_alloc = std::make_shared<DeviceAllocator>());
 
-  PlanT3(Options opt, int sign, std::array<T, DIM> input_min,
-         std::array<T, DIM> input_max, std::array<T, DIM> output_min,
-         std::array<T, DIM> output_max, StreamType stream);
+  PlanT3(Options opt, int sign, std::array<T, DIM> input_min, std::array<T, DIM> input_max,
+         std::array<T, DIM> output_min, std::array<T, DIM> output_max, StreamType stream,
+         std::shared_ptr<Allocator> device_alloc = std::make_shared<DeviceAllocator>());
 
   void set_input_points(IntType num_in,
                         std::array<const T *, DIM> input_points);

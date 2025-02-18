@@ -1,5 +1,6 @@
 set(NEONUFFT_SOURCE_FILES
 	plan.cpp
+	device_allocator.cpp
 	)
 
 

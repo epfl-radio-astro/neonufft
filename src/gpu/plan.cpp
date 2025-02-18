@@ -8,14 +8,14 @@ namespace neonufft {
 namespace gpu {
 
 template <typename T, std::size_t DIM>
-Plan<T, DIM>::Plan(Options opt, int sign, IntType num_nu,
-                   std::array<const T *, DIM> loc,
-                   std::array<IntType, DIM> modes, StreamType stream)
+Plan<T, DIM>::Plan(Options opt, int sign, IntType num_nu, std::array<const T*, DIM> loc,
+                   std::array<IntType, DIM> modes, StreamType stream,
+                   std::shared_ptr<Allocator> device_alloc)
     : impl_(decltype(impl_)(
-          new gpu::PlanImpl<T, DIM>(opt, sign, num_nu, loc, modes, stream),
-          [](void *ptr) {
+          new gpu::PlanImpl<T, DIM>(opt, sign, num_nu, loc, modes, stream, std::move(device_alloc)),
+          [](void* ptr) {
             if (ptr) {
-              delete reinterpret_cast<gpu::PlanImpl<T, DIM> *>(ptr);
+              delete reinterpret_cast<gpu::PlanImpl<T, DIM>*>(ptr);
             }
           })) {}
 

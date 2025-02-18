@@ -11,6 +11,7 @@
 #include "neonufft/config.h"
 #include "neonufft/exceptions.hpp"
 #include "neonufft/types.hpp"
+#include "util/func_attributes.hpp"
 
 /*
  *
@@ -42,38 +43,39 @@ template <IntType DIM>
 struct IndexArray;
 
 template <>
-struct IndexArray<0> {
-};
+struct IndexArray<0> {};
 
 template <>
 struct IndexArray<1> {
   static inline constexpr IntType DIM = 1;
 
-  IndexArray() noexcept : values{0} {}
+  NEONUFFT_H_D_FUNC IndexArray() noexcept : values{0} {}
 
-  IndexArray(IntType idx) noexcept : values{idx} {}
+  NEONUFFT_H_D_FUNC IndexArray(IntType idx) noexcept : values{idx} {}
 
-  IndexArray(std::array<IntType, 1> idx) noexcept : values{idx[0]} {}
+  NEONUFFT_H_D_FUNC IndexArray(std::array<IntType, 1> idx) noexcept : values{idx[0]} {}
 
-  inline auto operator[](const IntType& index) const noexcept -> const IntType& {
+  NEONUFFT_H_D_FUNC inline auto operator[](const IntType& index) const noexcept -> const IntType& {
     assert(index < 1);
     return values[index];
   }
 
-  inline auto operator[](const IntType& index) noexcept -> IntType& {
+  NEONUFFT_H_D_FUNC inline auto operator[](const IntType& index) noexcept -> IntType& {
     assert(index < 1);
     return values[index];
   }
 
-  inline auto fill(const IntType& val) noexcept -> void { values[0] = val; }
+  NEONUFFT_H_D_FUNC inline auto fill(const IntType& val) noexcept -> void { values[0] = val; }
 
-  inline auto begin() noexcept -> IntType* { return values; }
-  inline auto begin() const noexcept -> const IntType* { return values; }
+  NEONUFFT_H_D_FUNC inline auto begin() noexcept -> IntType* { return values; }
+  NEONUFFT_H_D_FUNC inline auto begin() const noexcept -> const IntType* { return values; }
 
-  inline auto end() noexcept -> IntType* { return values + DIM; }
-  inline auto end() const noexcept -> const IntType* { return values + DIM; }
+  NEONUFFT_H_D_FUNC inline auto end() noexcept -> IntType* { return values + DIM; }
+  NEONUFFT_H_D_FUNC inline auto end() const noexcept -> const IntType* { return values + DIM; }
 
-  inline auto to_array() const noexcept -> std::array<IntType, DIM> {
+  NEONUFFT_H_D_FUNC inline auto size() const noexcept -> IntType { return DIM; }
+
+  NEONUFFT_H_FUNC inline auto to_array() const noexcept -> std::array<IntType, DIM> {
     return std::array<IntType, DIM>{values[0]};
   }
 
@@ -84,34 +86,36 @@ template <>
 struct IndexArray<2> {
   static inline constexpr IntType DIM = 2;
 
-  IndexArray() noexcept : values{0, 0} {}
+  NEONUFFT_H_D_FUNC IndexArray() noexcept : values{0, 0} {}
 
-  IndexArray(IntType idx0, IntType idx1) noexcept: values{idx0, idx1} {}
+  NEONUFFT_H_D_FUNC IndexArray(IntType idx0, IntType idx1) noexcept : values{idx0, idx1} {}
 
-  IndexArray(std::array<IntType, DIM> idx) noexcept : values{idx[0], idx[1]} {}
+  NEONUFFT_H_D_FUNC IndexArray(std::array<IntType, DIM> idx) noexcept : values{idx[0], idx[1]} {}
 
-  inline auto operator[](const IntType& index) const noexcept -> const IntType& {
+  NEONUFFT_H_D_FUNC inline auto operator[](const IntType& index) const noexcept -> const IntType& {
     assert(index < DIM);
     return values[index];
   }
 
-  inline auto operator[](const IntType& index) noexcept -> IntType& {
+  NEONUFFT_H_D_FUNC inline auto operator[](const IntType& index) noexcept -> IntType& {
     assert(index < DIM);
     return values[index];
   }
 
-  inline auto fill(const IntType& val) noexcept -> void {
+  NEONUFFT_H_D_FUNC inline auto fill(const IntType& val) noexcept -> void {
     values[0] = val;
     values[1] = val;
   }
 
-  inline auto begin() noexcept -> IntType* { return values; }
-  inline auto begin() const noexcept -> const IntType* { return values; }
+  NEONUFFT_H_D_FUNC inline auto begin() noexcept -> IntType* { return values; }
+  NEONUFFT_H_D_FUNC inline auto begin() const noexcept -> const IntType* { return values; }
 
-  inline auto end() noexcept -> IntType* { return values + DIM; }
-  inline auto end() const noexcept -> const IntType* { return values + DIM; }
+  NEONUFFT_H_D_FUNC inline auto end() noexcept -> IntType* { return values + DIM; }
+  NEONUFFT_H_D_FUNC inline auto end() const noexcept -> const IntType* { return values + DIM; }
 
-  inline auto to_array() const noexcept -> std::array<IntType, DIM> {
+  NEONUFFT_H_D_FUNC inline auto size() const noexcept -> IntType { return DIM; }
+
+  NEONUFFT_H_FUNC inline auto to_array() const noexcept -> std::array<IntType, DIM> {
     return std::array<IntType, DIM>{values[0], values[1]};
   }
 
@@ -122,35 +126,39 @@ template <>
 struct IndexArray<3> {
   static inline constexpr IntType DIM = 3;
 
-  IndexArray() noexcept : values{0, 0, 0} {}
+  NEONUFFT_H_D_FUNC IndexArray() noexcept : values{0, 0, 0} {}
 
-  IndexArray(IntType idx0, IntType idx1, IntType idx2) noexcept: values{idx0, idx1, idx2} {}
+  NEONUFFT_H_D_FUNC IndexArray(IntType idx0, IntType idx1, IntType idx2) noexcept
+      : values{idx0, idx1, idx2} {}
 
-  IndexArray(std::array<IntType, DIM> idx) noexcept : values{idx[0], idx[1], idx[2]} {}
+  NEONUFFT_H_D_FUNC IndexArray(std::array<IntType, DIM> idx) noexcept
+      : values{idx[0], idx[1], idx[2]} {}
 
-  inline auto operator[](const IntType& index) const noexcept -> const IntType& {
+  NEONUFFT_H_D_FUNC inline auto operator[](const IntType& index) const noexcept -> const IntType& {
     assert(index < DIM);
     return values[index];
   }
 
-  inline auto operator[](const IntType& index) noexcept -> IntType& {
+  NEONUFFT_H_D_FUNC inline auto operator[](const IntType& index) noexcept -> IntType& {
     assert(index < DIM);
     return values[index];
   }
 
-  inline auto fill(const IntType& val) noexcept -> void {
+  NEONUFFT_H_D_FUNC inline auto fill(const IntType& val) noexcept -> void {
     values[0] = val;
     values[1] = val;
     values[2] = val;
   }
 
-  inline auto begin() noexcept -> IntType* { return values; }
-  inline auto begin() const noexcept -> const IntType* { return values; }
+  NEONUFFT_H_D_FUNC inline auto begin() noexcept -> IntType* { return values; }
+  NEONUFFT_H_D_FUNC inline auto begin() const noexcept -> const IntType* { return values; }
 
-  inline auto end() noexcept -> IntType* { return values + DIM; }
-  inline auto end() const noexcept -> const IntType* { return values + DIM; }
+  NEONUFFT_H_D_FUNC inline auto end() noexcept -> IntType* { return values + DIM; }
+  NEONUFFT_H_D_FUNC inline auto end() const noexcept -> const IntType* { return values + DIM; }
 
-  inline auto to_array() const noexcept -> std::array<IntType, DIM> {
+  NEONUFFT_H_D_FUNC inline auto size() const noexcept -> IntType { return DIM; }
+
+  NEONUFFT_H_FUNC inline auto to_array() const noexcept -> std::array<IntType, DIM> {
     return std::array<IntType, DIM>{values[0], values[1], values[2]};
   }
 
@@ -161,16 +169,16 @@ namespace impl {
 // Use specialized structs to compute index, since some compiler do not properly optimize otherwise
 template <IntType DIM, IntType N>
 struct ViewIndexHelper {
-  inline static constexpr auto eval(const IndexArray<DIM>& indices,
-                                    const IndexArray<DIM>& strides) -> IntType {
+  NEONUFFT_H_D_FUNC inline static constexpr auto eval(const IndexArray<DIM>& indices,
+                                                      const IndexArray<DIM>& strides) -> IntType {
     return indices[N] * strides[N] + ViewIndexHelper<DIM, N - 1>::eval(indices, strides);
   }
 };
 
 template <IntType DIM>
 struct ViewIndexHelper<DIM, 0> {
-  inline static constexpr auto eval(const IndexArray<DIM>& indices,
-                                    const IndexArray<DIM>&) -> IntType {
+  NEONUFFT_H_D_FUNC inline static constexpr auto eval(const IndexArray<DIM>& indices,
+                                                      const IndexArray<DIM>&) -> IntType {
     static_assert(DIM >= 1);
     return indices[0];
   }
@@ -178,22 +186,33 @@ struct ViewIndexHelper<DIM, 0> {
 
 template <IntType DIM>
 struct ViewIndexHelper<DIM, 1> {
-  inline static constexpr auto eval(const IndexArray<DIM>& indices,
-                                    const IndexArray<DIM>& strides) -> IntType {
+  NEONUFFT_H_D_FUNC inline static constexpr auto eval(const IndexArray<DIM>& indices,
+                                                      const IndexArray<DIM>& strides) -> IntType {
     static_assert(DIM >= 2);
     return indices[0] + indices[1] * strides[1];
   }
 };
 
-template <IntType DIM, typename UnaryTransformOp>
-inline auto compare_elements(const IndexArray<DIM>& left, const IndexArray<DIM>& right,
-                             UnaryTransformOp&& op) -> bool {
-  if constexpr (DIM == 1) {
-    return op(left[0], right[0]);
-  } else {
-    return std::transform_reduce(left.begin(), left.end(), right.begin(), true, std::logical_and{},
-                                 std::forward<UnaryTransformOp>(op));
+template <IntType DIM>
+NEONUFFT_H_D_FUNC inline auto all_less(const IndexArray<DIM>& left, const IndexArray<DIM>& right)
+    -> bool {
+  bool res = left[0] < right[0];
+  for (IntType i = 1; i < DIM; ++i) {
+    res &= left[i] < right[i];
   }
+
+  return res;
+}
+
+template <IntType DIM>
+NEONUFFT_H_D_FUNC inline auto all_equal(const IndexArray<DIM>& left, const IndexArray<DIM>& right)
+    -> bool {
+  bool res = left[0] == right[0];
+  for (IntType i = 1; i < DIM; ++i) {
+    res &= left[i] == right[i];
+  }
+
+  return res;
 }
 
 }  // namespace impl
@@ -202,20 +221,22 @@ inline auto compare_elements(const IndexArray<DIM>& left, const IndexArray<DIM>&
  * Helper functions
  */
 template <IntType DIM>
-inline constexpr auto view_index(const IndexArray<DIM>& indices,
-                                  const IndexArray<DIM>& strides) -> IntType {
+NEONUFFT_H_D_FUNC inline constexpr auto view_index(const IndexArray<DIM>& indices,
+                                                   const IndexArray<DIM>& strides) -> IntType {
   return impl::ViewIndexHelper<DIM, DIM - 1>::eval(indices, strides);
 }
 
-inline constexpr auto view_index(IntType index, IntType) -> IntType { return index; }
-
-// inline constexpr auto view_size(IntType shape) -> IntType { return shape; }
-
 template <IntType DIM>
-inline constexpr auto view_size(const IndexArray<DIM>& shape) -> IntType {
-  return std::reduce(shape.begin(), shape.end(), IntType(1), std::multiplies{});
+NEONUFFT_H_D_FUNC inline constexpr auto view_size(const IndexArray<DIM>& shape) -> IntType {
+  if constexpr (DIM == 0) {
+    return 0;
+  }
+  IntType size = 1;
+  for (IntType i = 0; i < DIM; ++i) {
+    size *= shape[i];
+  }
+  return size;
 }
-
 
 template <typename T, IntType DIM>
 class ConstView {
@@ -225,12 +246,12 @@ public:
   using IndexType = IndexArray<DIM>;
   using SliceType = ConstView<T, DIM - 1>;
 
-  ConstView() {
+  NEONUFFT_H_D_FUNC ConstView() {
     shape_.fill(0);
     strides_.fill(1);
   }
 
-  ConstView(const T* ptr, const IndexType& shape, const IndexType& strides)
+  NEONUFFT_H_D_FUNC ConstView(const T* ptr, const IndexType& shape, const IndexType& strides)
       : shape_(shape), strides_(strides), totalSize_(view_size(shape)), constPtr_(ptr) {
 #ifndef NDEBUG
     assert(this->strides(0) == 1);
@@ -240,50 +261,55 @@ public:
 #endif
   }
 
-  inline auto data() const noexcept -> const T* { return constPtr_; }
+  NEONUFFT_H_D_FUNC inline auto data() const noexcept -> const T* { return constPtr_; }
 
-  inline auto size() const noexcept -> IntType { return totalSize_; }
+  NEONUFFT_H_D_FUNC inline auto size() const noexcept -> IntType { return totalSize_; }
 
-  inline auto size_in_bytes() const noexcept -> IntType { return totalSize_ * sizeof(T); }
+  NEONUFFT_H_D_FUNC inline auto size_in_bytes() const noexcept -> IntType {
+    return totalSize_ * sizeof(T);
+  }
 
-  inline auto is_contiguous() const noexcept -> bool {
+  NEONUFFT_H_D_FUNC inline auto is_contiguous() const noexcept -> bool {
     if constexpr (DIM <= 1) {
       return true;
     }
-    return std::transform_reduce(shape_.begin(), shape_.end() - 1, strides_.begin() + 1, true,
-                                 std::logical_and{}, std::equal_to{});
+
+    bool res = true;
+    for (IntType i = 0; i < shape_.size() - 1; ++i) {
+      res &= strides_[i + 1] == shape_[i] * strides_[i];
+    }
+    return res;
   }
 
-  inline auto shape() const noexcept -> const IndexType& { return shape_; }
+  NEONUFFT_H_D_FUNC inline auto shape() const noexcept -> const IndexType& { return shape_; }
 
-  inline auto shape(IntType i) const noexcept -> IntType {
+  NEONUFFT_H_D_FUNC inline auto shape(IntType i) const noexcept -> IntType {
     assert(i < DIM);
     return shape_[i];
   }
 
-  inline auto strides() const noexcept -> const IndexType& { return strides_; }
+  NEONUFFT_H_D_FUNC inline auto strides() const noexcept -> const IndexType& { return strides_; }
 
-  inline auto strides(IntType i) const noexcept -> IntType {
+  NEONUFFT_H_D_FUNC inline auto strides(IntType i) const noexcept -> IntType {
     assert(i < DIM);
     return strides_[i];
   }
 
-  auto slice_view(IntType outer_index) const -> SliceType {
+  NEONUFFT_H_D_FUNC auto slice_view(IntType outer_index) const -> SliceType {
     typename SliceType::IndexType slice_shape, slice_strides;
-    if constexpr(DIM == 2) {
-      slice_shape = shape_[0];
-      slice_strides = strides_[0];
-    } else {
-      std::copy(this->shape_.begin(), this->shape_.end() - 1, slice_shape.begin());
-      std::copy(this->strides_.begin(), this->strides_.end() - 1, slice_strides.begin());
+
+    for (IntType i = 0; i < slice_shape.size(); ++i) {
+      slice_shape[i] = shape_[i];
+      slice_strides[i] = strides_[i];
     }
 
     return SliceType{this->constPtr_ + outer_index * this->strides(DIM - 1), slice_shape,
                      slice_strides};
   }
 
-  auto sub_view(const IndexType& offset, const IndexType& shape) const -> ConstView<T, DIM> {
-    assert(impl::compare_elements(offset, shape_, std::less{}));
+  NEONUFFT_H_D_FUNC auto sub_view(const IndexType& offset, const IndexType& shape) const
+      -> ConstView<T, DIM> {
+    assert(impl::all_less(offset, shape_));
 #ifndef NDEBUG
     for (IntType i = 0; i < DIM; ++i) {
       assert(shape[i] + offset[i] <= shape_[i]);
@@ -309,35 +335,45 @@ public:
   using IndexType = IndexArray<DIM>;
   using SliceType = View<T, DIM - 1>;
 
-  View() = default;
+  NEONUFFT_H_D_FUNC View() = default;
 
-  View(T* ptr, const IndexType& shape, const IndexType& strides) : v_(ptr, shape, strides) {}
+  NEONUFFT_H_D_FUNC View(T* ptr, const IndexType& shape, const IndexType& strides)
+      : v_(ptr, shape, strides) {}
 
-  operator ConstView<T, DIM>() const { return v_; };
+  NEONUFFT_H_D_FUNC operator ConstView<T, DIM>() const { return v_; };
 
-  inline auto data() noexcept -> T* { return const_cast<T*>(v_.data()); }
+  NEONUFFT_H_D_FUNC inline auto data() noexcept -> T* { return const_cast<T*>(v_.data()); }
 
-  inline auto data() const noexcept -> const T* { return v_.data(); }
+  NEONUFFT_H_D_FUNC inline auto data() const noexcept -> const T* { return v_.data(); }
 
-  inline auto size() const noexcept -> IntType { return v_.size(); }
+  NEONUFFT_H_D_FUNC inline auto size() const noexcept -> IntType { return v_.size(); }
 
-  inline auto size_in_bytes() const noexcept -> IntType { return v_.size_in_bytes(); }
+  NEONUFFT_H_D_FUNC inline auto size_in_bytes() const noexcept -> IntType {
+    return v_.size_in_bytes();
+  }
 
-  inline auto is_contiguous() const noexcept -> bool { return v_.is_contiguous(); }
+  NEONUFFT_H_D_FUNC inline auto is_contiguous() const noexcept -> bool {
+    return v_.is_contiguous();
+  }
 
-  inline auto shape() const noexcept -> const IndexType& { return v_.shape(); }
+  NEONUFFT_H_D_FUNC inline auto shape() const noexcept -> const IndexType& { return v_.shape(); }
 
-  inline auto shape(IntType i) const noexcept -> IntType { return v_.shape(i); }
+  NEONUFFT_H_D_FUNC inline auto shape(IntType i) const noexcept -> IntType { return v_.shape(i); }
 
-  inline auto strides() const noexcept -> const IndexType& { return v_.strides(); }
+  NEONUFFT_H_D_FUNC inline auto strides() const noexcept -> const IndexType& {
+    return v_.strides();
+  }
 
-  inline auto strides(IntType i) const noexcept -> IntType { return v_.strides(i); }
+  NEONUFFT_H_D_FUNC inline auto strides(IntType i) const noexcept -> IntType {
+    return v_.strides(i);
+  }
 
-  inline auto slice_view(IntType outer_index) const -> SliceType {
+  NEONUFFT_H_D_FUNC inline auto slice_view(IntType outer_index) const -> SliceType {
     return SliceType(v_.slice_view(outer_index));
   }
 
-  inline auto sub_view(const IndexType& offset, const IndexType& shape) const -> View<T, DIM> {
+  NEONUFFT_H_D_FUNC inline auto sub_view(const IndexType& offset, const IndexType& shape) const
+      -> View<T, DIM> {
     return View(v_.sub_view(offset, shape));
   }
 
@@ -367,12 +403,12 @@ public:
   operator View<T, DIM>() const { return v_; };
 
   inline auto operator[](const IndexType& index) const noexcept -> const T& {
-    assert(impl::compare_elements(index, v_.shape(), std::less{}));
+    assert(impl::all_less(index, v_.shape()));
     return v_.data()[view_index(index, v_.strides())];
   }
 
   inline auto operator[](const IndexType& index) noexcept -> T& {
-    assert(impl::compare_elements(index, v_.shape(), std::less{}));
+    assert(impl::all_less(index, v_.shape()));
     return v_.data()[view_index(index, v_.strides())];
   }
 
@@ -435,7 +471,7 @@ public:
   operator ConstView<T, DIM>() const { return v_; };
 
   inline auto operator[](const IndexType& index) const noexcept -> const T& {
-    assert(impl::compare_elements(index, v_.shape(), std::less{}));
+    assert(impl::all_less(index, v_.shape()));
     return v_.data()[view_index(index, v_.strides())];
   }
 
@@ -459,7 +495,8 @@ public:
     return SliceType(v_.slice_view(outer_index));
   }
 
-  inline auto sub_view(const IndexType& offset, const IndexType& shape) const -> ConstHostView<T, DIM> {
+  inline auto sub_view(const IndexType& offset, const IndexType& shape) const
+      -> ConstHostView<T, DIM> {
     return ConstHostView(v_.sub_view(offset, shape));
   }
 

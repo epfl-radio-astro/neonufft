@@ -6,6 +6,7 @@
 #include "es_kernel/util.hpp"
 #include "es_kernel_param.hpp"
 #include "gpu/util/runtime_api.hpp"
+#include "gpu/memory/device_array.hpp"
 #include "kernels/rescale_loc_kernel.hpp"
 #include "memory/array.hpp"
 #include "memory/view.hpp"
@@ -29,11 +30,14 @@ public:
   static_assert(std::is_same_v<T, float> || std::is_same_v<T, double>);
   static_assert(DIM == 1 || DIM == 2 || DIM == 3);
 
-  PlanImpl(Options opt, int sign, IntType num_nu,
-           std::array<const T *, DIM> loc, std::array<IntType, DIM> modes,
-           api::StreamType stream)
-      : opt_(opt), stream_(stream), modes_(modes), sign_(sign) {
-
+  PlanImpl(Options opt, int sign, IntType num_nu, std::array<const T*, DIM> loc,
+           std::array<IntType, DIM> modes, api::StreamType stream,
+           std::shared_ptr<Allocator> device_alloc)
+      : device_alloc_(std::move(device_alloc)),
+        opt_(opt),
+        stream_(stream),
+        modes_(modes),
+        sign_(sign) {
     kernel_param_ =
         KernelParameters<T>(opt_.tol, opt.upsampfac, opt.kernel_approximation);
 
@@ -122,6 +126,7 @@ public:
   }
 
 private:
+  std::shared_ptr<Allocator> device_alloc_;
   Options opt_;
   api::StreamType stream_;
   std::array<IntType, DIM> modes_;
