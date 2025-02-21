@@ -57,7 +57,7 @@ public:
   DeviceArray(const IndexType &shape, std::shared_ptr<Allocator> alloc)
   {
     const auto allocate_size = view_size(shape);
-    auto ptr = static_cast<T*>(alloc->allocate(allocate_size));
+    auto ptr = static_cast<T*>(alloc->allocate(allocate_size * sizeof(T)));
 
     data_ = std::unique_ptr<T, AllocatorWrapper>(ptr, AllocatorWrapper{std::move(alloc)});
     v_ = DeviceView<T, DIM>(ptr, shape, shape_to_stride(shape));

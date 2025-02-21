@@ -13,7 +13,7 @@ set_property(TARGET neonufft_gpu_objects PROPERTY POSITION_INDEPENDENT_CODE ON)
 target_compile_options(neonufft_gpu_objects PRIVATE ${NEONUFFT_FLAGS})
 target_include_directories(neonufft_gpu_objects PRIVATE ${NEONUFFT_INCLUDE_DIRS})
 target_link_libraries(neonufft_gpu_objects PRIVATE ${NEONUFFT_GPU_EXTERNAL_LIBS})
-target_link_libraries(neonufft_gpu_objects PRIVATE ${NEONUFFT_GPU_EXTERNAL_LIBS_PUBLIC})
+target_link_libraries(neonufft_gpu_objects PUBLIC ${NEONUFFT_GPU_EXTERNAL_LIBS_PUBLIC})
 target_include_directories(neonufft_gpu_objects INTERFACE $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>  $<BUILD_INTERFACE:${PROJECT_BINARY_DIR}>)
 set_target_properties(neonufft_gpu_objects PROPERTIES VISIBILITY_INLINES_HIDDEN TRUE CXX_VISIBILITY_PRESET hidden)
 
@@ -32,3 +32,10 @@ set_target_properties(neonufft_gpu PROPERTIES VISIBILITY_INLINES_HIDDEN TRUE CXX
 
 # add alias target
 add_library(neonufft::neonufft_gpu ALIAS neonufft_gpu)
+
+
+set_target_properties(neonufft_gpu
+    PROPERTIES
+	LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
+)
+

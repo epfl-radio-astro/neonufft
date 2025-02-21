@@ -26,6 +26,10 @@ add_executable(run_tests
 target_link_libraries(run_tests PRIVATE gtest $<TARGET_OBJECTS:neonufft_objects> $<TARGET_OBJECTS:neonufft_contrib_objects> ${NEONUFFT_EXTERNAL_LIBS} ${NEONUFFT_EXTERNAL_LIBS_PUBLIC})
 target_include_directories(run_tests PRIVATE ${NEONUFFT_INCLUDE_DIRS})
 
+if(NEONUFFT_CUDA OR NEONUFFT_ROCM)
+  target_link_libraries(run_tests PRIVATE $<TARGET_OBJECTS:neonufft_gpu_objects> ${NEONUFFT_GPU_EXTERNAL_LIBS_PUBLIC} ${NEONUFFT_GPU_EXTERNAL_LIBS})
+endif()
+
 set_target_properties(run_tests
     PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"

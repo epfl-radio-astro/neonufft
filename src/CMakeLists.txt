@@ -44,6 +44,11 @@ set_target_properties(neonufft PROPERTIES VISIBILITY_INLINES_HIDDEN TRUE CXX_VIS
 # add alias target
 add_library(neonufft::neonufft ALIAS neonufft)
 
+set_target_properties(neonufft
+    PROPERTIES
+    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
+)
+
 # include GPU library
 if(NEONUFFT_CUDA OR NEONUFFT_ROCM)
 	add_subdirectory(gpu)
@@ -53,7 +58,7 @@ endif()
 include(GenerateExportHeader)
 generate_export_header(neonufft)
 configure_file("${CMAKE_CURRENT_BINARY_DIR}/neonufft_export.h"
-	"${PROJECT_BINARY_DIR}/neonufft/neonufft_export.h"
+	"${PROJECT_BINARY_DIR}/include/neonufft/neonufft_export.h"
 	COPYONLY
 )
 
@@ -72,43 +77,54 @@ endif()
 
 # generate cmake package
 include(CMakePackageConfigHelpers)
+
+set(NEONUFFT_CONFIG_OUT_DIR "${PROJECT_BINARY_DIR}/lib/cmake/neonufft")
+
 write_basic_package_version_file(
-	"${PROJECT_BINARY_DIR}/${NEONUFFT_VERSION_FILE}"
+	"${NEONUFFT_CONFIG_OUT_DIR}/${NEONUFFT_VERSION_FILE}"
 	VERSION ${Upstream_VERSION}
 	COMPATIBILITY AnyNewerVersion
 )
 
-export(TARGETS neonufft NAMESPACE neonufft:: FILE ${PROJECT_BINARY_DIR}/${NEONUFFT_TARGETS_FILE})
+export(TARGETS neonufft NAMESPACE neonufft:: FILE ${NEONUFFT_CONFIG_OUT_DIR}/${NEONUFFT_TARGETS_FILE})
 configure_file(${PROJECT_SOURCE_DIR}/cmake/${NEONUFFT_CONFIG_FILE}
-	"${PROJECT_BINARY_DIR}/${NEONUFFT_CONFIG_FILE}"
+	"${NEONUFFT_CONFIG_OUT_DIR}/${NEONUFFT_CONFIG_FILE}"
 	@ONLY
 )
 configure_file(${PROJECT_SOURCE_DIR}/cmake/neonufftConfig.cmake
-	"${PROJECT_BINARY_DIR}/neonufftConfig.cmake"
+	"${NEONUFFT_CONFIG_OUT_DIR}/neonufftConfig.cmake"
 	@ONLY
 )
 configure_file(${PROJECT_SOURCE_DIR}/cmake/neonufftConfigVersion.cmake
-	"${PROJECT_BINARY_DIR}/neonufftConfigVersion.cmake"
+	"${NEONUFFT_CONFIG_OUT_DIR}/neonufftConfigVersion.cmake"
 	COPYONLY
 )
 configure_file(${PROJECT_SOURCE_DIR}/cmake/neonufftTargets.cmake
-	"${PROJECT_BINARY_DIR}/neonufftTargets.cmake"
+	"${NEONUFFT_CONFIG_OUT_DIR}/neonufftTargets.cmake"
 	COPYONLY
 )
 
 # installation commands
 if(NEONUFFT_INSTALL_LIB)
-	install(TARGETS neonufft neonufft_gpu DESTINATION ${CMAKE_INSTALL_LIBDIR} EXPORT neonufftTargets)
-	install(DIRECTORY ${PROJECT_SOURCE_DIR}/include/neonufft DESTINATION ${CMAKE_INSTALL_INCLUDEDIR} FILES_MATCHING PATTERN "*.h" PATTERN "*.hpp" PATTERN "*.f90")
-	install(FILES ${PROJECT_BINARY_DIR}/neonufft/config.h "${PROJECT_BINARY_DIR}/neonufft/neonufft_export.h" DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/neonufft)
+	set(NEONUFFT_TARGETS neonufft)
+	if(NEONUFFT_CUDA OR NEONUFFT_ROCM)
+	    list(APPEND NEONUFFT_TARGETS neonufft_gpu)
+	endif()
+
+	install(TARGETS ${NEONUFFT_TARGETS} DESTINATION ${CMAKE_INSTALL_LIBDIR} EXPORT neonufftTargets)
+	install(DIRECTORY ${PROJECT_SOURCE_DIR}/include/neonufft/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/neonufft PATTERN "gpu" EXCLUDE PATTERN "config.in.h" EXCLUDE)
+	if(NEONUFFT_CUDA OR NEONUFFT_ROCM)
+	    install(DIRECTORY ${PROJECT_SOURCE_DIR}/include/neonufft/gpu/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/neonufft/gpu)
+	endif()
+	install(FILES ${PROJECT_BINARY_DIR}/include/neonufft/config.h ${PROJECT_BINARY_DIR}/include/neonufft/neonufft_export.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/neonufft)
 	install(EXPORT neonufftTargets NAMESPACE neonufft:: DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/neonufft FILE ${NEONUFFT_TARGETS_FILE})
 	install(
 	  FILES
-		"${PROJECT_BINARY_DIR}/neonufftConfig.cmake"
-		"${PROJECT_BINARY_DIR}/neonufftTargets.cmake"
-		"${PROJECT_BINARY_DIR}/neonufftConfigVersion.cmake"
-		"${PROJECT_BINARY_DIR}/${NEONUFFT_CONFIG_FILE}"
-		"${PROJECT_BINARY_DIR}/${NEONUFFT_VERSION_FILE}"
+	  "${NEONUFFT_CONFIG_OUT_DIR}/neonufftConfig.cmake"
+	  "${NEONUFFT_CONFIG_OUT_DIR}/neonufftTargets.cmake"
+	  "${NEONUFFT_CONFIG_OUT_DIR}/neonufftConfigVersion.cmake"
+	  "${NEONUFFT_CONFIG_OUT_DIR}/${NEONUFFT_CONFIG_FILE}"
+	  "${NEONUFFT_CONFIG_OUT_DIR}/${NEONUFFT_VERSION_FILE}"
 	  DESTINATION
 	      ${CMAKE_INSTALL_LIBDIR}/cmake/neonufft
 	)

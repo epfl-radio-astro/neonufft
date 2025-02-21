@@ -141,7 +141,7 @@ if(NEONUFFT_CUDA)
 	find_package(CUDAToolkit REQUIRED)
 
 	list(APPEND NEONUFFT_GPU_EXTERNAL_LIBS CUDA::cufft)
-	list(APPEND NEONUFFT_GPU_EXTERNAL_LIBS_PUBLIC_EXTERNAL_LIBS CUDA::cudart)
+	list(APPEND NEONUFFT_GPU_EXTERNAL_LIBS_PUBLIC CUDA::cudart)
 endif()
 
 if(NEONUFFT_ROCM)
@@ -149,12 +149,12 @@ if(NEONUFFT_ROCM)
 endif()
 
 # generate config.h
-configure_file(cmake/config.h.in ${PROJECT_BINARY_DIR}/neonufft/config.h)
+configure_file(cmake/config.h.in ${PROJECT_BINARY_DIR}/include/neonufft/config.h)
 
 list(APPEND NEONUFFT_INCLUDE_DIRS ${PROJECT_SOURCE_DIR}/contrib)
 list(APPEND NEONUFFT_INCLUDE_DIRS ${PROJECT_SOURCE_DIR}/src)
 list(APPEND NEONUFFT_INCLUDE_DIRS ${PROJECT_SOURCE_DIR}/include)
-list(APPEND NEONUFFT_INCLUDE_DIRS ${PROJECT_BINARY_DIR})
+list(APPEND NEONUFFT_INCLUDE_DIRS ${PROJECT_BINARY_DIR}/include)
 
 add_subdirectory(contrib)
 add_subdirectory(src)
