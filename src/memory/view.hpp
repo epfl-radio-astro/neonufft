@@ -79,7 +79,7 @@ struct IndexArray<1> {
     return std::array<IntType, DIM>{values[0]};
   }
 
-  IntType values[1];
+  IntType values[1] = {0};
 };
 
 template <>
@@ -119,7 +119,7 @@ struct IndexArray<2> {
     return std::array<IntType, DIM>{values[0], values[1]};
   }
 
-  IntType values[DIM];
+  IntType values[DIM] = {0};
 };
 
 template <>
@@ -162,7 +162,7 @@ struct IndexArray<3> {
     return std::array<IntType, DIM>{values[0], values[1], values[2]};
   }
 
-  IntType values[DIM];
+  IntType values[DIM] = {0};
 };
 
 namespace impl {
@@ -245,6 +245,8 @@ public:
   using BaseType = ConstView<T, DIM>;
   using IndexType = IndexArray<DIM>;
   using SliceType = ConstView<T, DIM - 1>;
+
+  static inline constexpr IntType dimension = DIM;
 
   NEONUFFT_H_D_FUNC ConstView() {
     shape_.fill(0);
@@ -335,6 +337,8 @@ public:
   using IndexType = IndexArray<DIM>;
   using SliceType = View<T, DIM - 1>;
 
+  static inline constexpr IntType dimension = DIM;
+
   NEONUFFT_H_D_FUNC View() = default;
 
   NEONUFFT_H_D_FUNC View(T* ptr, const IndexType& shape, const IndexType& strides)
@@ -391,6 +395,8 @@ public:
   using ValueType = T;
   using IndexType = IndexArray<DIM>;
   using SliceType = HostView<T, DIM - 1>;
+
+  static inline constexpr IntType dimension = DIM;
 
   HostView() = default;
 
@@ -458,6 +464,8 @@ public:
   using ValueType = T;
   using IndexType = IndexArray<DIM>;
   using SliceType = ConstHostView<T, DIM - 1>;
+
+  static inline constexpr IntType dimension = DIM;
 
   ConstHostView() = default;
 

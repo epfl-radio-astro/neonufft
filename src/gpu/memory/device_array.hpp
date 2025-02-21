@@ -32,6 +32,8 @@ public:
   using IndexType = IndexArray<DIM>;
   using SliceType = DeviceArray<T, DIM - 1>;
 
+  static inline constexpr IntType dimension = DIM;
+
   DeviceArray() : data_(nullptr, AllocatorWrapper()) {};
 
   DeviceArray(const DeviceArray&) = delete;
@@ -68,9 +70,9 @@ public:
   inline auto view() const -> ConstDeviceView<T, DIM> { return v_; }
 
   // resize if required. Does not copy or zero memory.
-  inline auto reset(const IndexType &newShape) -> void {
+  inline auto reset(const IndexType& newShape, std::shared_ptr<Allocator> alloc) -> void {
     if (!impl::all_equal(newShape, v_.shape())) {
-      *this = DeviceArray<T, DIM>(newShape, data_.get_deleter()->alloc);
+      *this = DeviceArray<T, DIM>(newShape, alloc);
     }
   }
 

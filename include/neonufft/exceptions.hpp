@@ -80,10 +80,22 @@ public:
 
 class NEONUFFT_EXPORT GPUError : public GenericError {
 public:
-  GPUError() : GenericError("Neonufft:: Not implemented") {}
+  GPUError() : GenericError("Neonufft:: GPU error") {}
 
   // must be a string literal
   GPUError(const char *msg) : GenericError(msg) {}
+
+  NeonufftError error_code() const noexcept override {
+    return NeonufftError::NEONUFFT_GPU_ERROR;
+  }
+};
+
+class NEONUFFT_EXPORT GPUFFTError : public GenericError {
+public:
+  GPUFFTError() : GenericError("Neonufft:: GPU FFT error") {}
+
+  // must be a string literal
+  GPUFFTError(const char *msg) : GenericError(msg) {}
 
   NeonufftError error_code() const noexcept override {
     return NeonufftError::NEONUFFT_GPU_ERROR;

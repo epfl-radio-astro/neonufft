@@ -50,6 +50,8 @@ public:
   using IndexType = IndexArray<DIM>;
   using SliceType = DeviceView<T, DIM - 1>;
 
+  static inline constexpr IntType dimension = DIM;
+
   NEONUFFT_H_D_FUNC DeviceView() = default;
 
   NEONUFFT_H_D_FUNC explicit DeviceView(const View<T, DIM>& v) : v_(v){};
@@ -116,13 +118,13 @@ public:
         api::memset_async(v_.data(), 0, v_.shape(0) * sizeof(T), stream);
       } else {
         if(v_.is_contiguous() ) {
-          api::memset_async(v_.data(), 0, v_.size(0) * sizeof(T), stream);
+          api::memset_async(v_.data(), 0, v_.size() * sizeof(T), stream);
         } else {
           if constexpr (DIM == 2) {
             api::memset_2d_async(v_.data(), v_.strides(1), 0, v_.shape(0) * sizeof(T), v_.shape(1),
                                  stream);
           } else {
-            for (IntType i = 0; i < v_.shape(DIM - 1); ++i) this->slice_view(i).zero();
+            for (IntType i = 0; i < v_.shape(DIM - 1); ++i) this->slice_view(i).zero(stream);
           }
         }
       }
@@ -139,6 +141,8 @@ public:
   using ValueType = T;
   using IndexType = IndexArray<DIM>;
   using SliceType = ConstDeviceView<T, DIM - 1>;
+
+  static inline constexpr IntType dimension = DIM;
 
   NEONUFFT_H_D_FUNC ConstDeviceView() = default;
 

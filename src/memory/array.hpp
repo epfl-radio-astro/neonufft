@@ -49,6 +49,8 @@ public:
   using IndexType = IndexArray<DIM>;
   using SliceType = HostArray<T, DIM - 1>;
 
+  static inline constexpr IntType dimension = DIM;
+
   HostArray() : data_(nullptr, &memory::deallocate_aligned) {};
 
   HostArray(const HostArray&) = delete;

@@ -2,6 +2,7 @@
 
 #include "neonufft/config.h"
 #include "neonufft/gpu/plan.hpp"
+#include "neonufft/gpu/device_allocator.hpp"
 
 #include "es_kernel/util.hpp"
 #include "es_kernel_param.hpp"
@@ -10,6 +11,8 @@
 #include "kernels/rescale_loc_kernel.hpp"
 #include "memory/array.hpp"
 #include "memory/view.hpp"
+#include "gpu/memory/copy.hpp"
+#include "kernels/rescale_loc_kernel.hpp"
 #include "neonufft/exceptions.hpp"
 #include "neonufft/plan.hpp"
 #include "neonufft/types.hpp"
@@ -38,35 +41,28 @@ public:
         stream_(stream),
         modes_(modes),
         sign_(sign) {
-    kernel_param_ =
-        KernelParameters<T>(opt_.tol, opt.upsampfac, opt.kernel_approximation);
+    kernel_param_ = KernelParameters<T>(opt_.tol, opt.upsampfac, opt.kernel_approximation);
 
     this->set_modes(modes);
     this->set_nu_points(num_nu, loc);
   }
 
-  void transform_type_1(const ComplexType<T> *in, ComplexType<T> *out,
+  void transform_type_1(const ComplexType<T>* in, ComplexType<T>* out,
                         std::array<IntType, DIM> out_strides) {
     throw NotImplementedError();
   }
 
-  void transform_type_2(const ComplexType<T> *in,
-                        std::array<IntType, DIM> in_strides,
-                        ComplexType<T> *out) {
-    fft_grid_.view().zero();
+  void transform_type_2(const ComplexType<T>* in, std::array<IntType, DIM> in_strides,
+                        ComplexType<T>* out) {
+    fft_grid_.view().zero(stream_);
 
-    std::array<ConstHostView<T, 1>, DIM> correction_factor_views;
+    std::array<ConstDeviceView<T, 1>, DIM> correction_factor_views;
     for (IntType dim = 0; dim < DIM; ++dim) {
       correction_factor_views[dim] = correction_factors_[dim].view();
     }
 
     ConstHostView<ComplexType<T>, DIM> in_view;
-    if constexpr (DIM == 1) {
-      in_view =
-          ConstHostView<ComplexType<T>, DIM>(in, modes_[0], in_strides[0]);
-    } else {
-      in_view = ConstHostView<ComplexType<T>, DIM>(in, modes_, in_strides);
-    }
+    in_view = ConstHostView<ComplexType<T>, DIM>(in, modes_, in_strides);
 
     // upsample<T, DIM>(opt_.order, in_view, correction_factor_views,
     //                  fft_grid_.view());
@@ -80,8 +76,8 @@ public:
     // required fft grid size
     std::array<IntType, DIM> fft_grid_size;
     for (std::size_t d = 0; d < DIM; ++d) {
-      fft_grid_size[d] = std::max<std::size_t>(2 * kernel_param_.n_spread,
-                                               modes[d] * opt_.upsampfac);
+      fft_grid_size[d] =
+          std::max<std::size_t>(2 * kernel_param_.n_spread, modes[d] * opt_.upsampfac);
     }
 
     // create new grid if different
@@ -91,38 +87,47 @@ public:
     }
     if (new_grid) {
       const auto padding = spread_padding(kernel_param_.n_spread);
-      if constexpr (DIM == 1) {
-        fft_grid_ = FFTGrid<T, DIM>(opt_.num_threads, fft_grid_size[0], sign_, padding);
-      } else {
-        typename decltype(fft_grid_)::IndexType pad;
-        pad.fill(padding);
-        fft_grid_ =
-            FFTGrid<T, DIM>(opt_.num_threads, fft_grid_size, sign_, pad);
-      }
+      typename decltype(fft_grid_)::IndexType pad;
+      pad.fill(padding);
+      fft_grid_ = FFTGrid<T, DIM>(device_alloc_, stream_, fft_grid_size, sign_, pad);
 
       // recompute correction factor for kernel windowing
       // we compute the inverse to use multiplication during execution
 
+      std::array<HostArray<T, 1>, DIM> correction_factors_host;
       for (std::size_t d = 0; d < DIM; ++d) {
         auto correction_fact_size = fft_grid_size[d] / 2 + 1;
-        correction_factors_[d].reset(correction_fact_size);
+        correction_factors_[d].reset(correction_fact_size, device_alloc_);
+        correction_factors_host[d].reset(correction_fact_size);
 
-        contrib::onedim_fseries_kernel_inverse(
-            fft_grid_size[d], correction_factors_[d].data(),
-            kernel_param_.n_spread, kernel_param_.es_halfwidth,
-            kernel_param_.es_beta, kernel_param_.es_c);
+        contrib::onedim_fseries_kernel_inverse(fft_grid_size[d], correction_factors_host[d].data(),
+                                               kernel_param_.n_spread, kernel_param_.es_halfwidth,
+                                               kernel_param_.es_beta, kernel_param_.es_c);
+        gpu::memcopy(correction_factors_host[d], correction_factors_[d], stream_);
       }
+      // make sure copies are done before correction_factors_host is destroyed
+      api::stream_synchronize(stream_);
     }
 
     modes_ = modes;
   }
 
-  void set_nu_points(IntType num_nu, std::array<const T *, DIM> loc) {
+  void set_nu_points(IntType num_nu, std::array<const T*, DIM> loc) {
+    std::array<HostArray<T, 1>, DIM> loc_host;
+    for (std::size_t d = 0; d < DIM; ++d) {
+      loc_host[d].reset(num_nu);
+      gpu::memcopy(ConstView<T, 1>(loc[d], num_nu, 1), loc_host[d], stream_);
+    }
+    api::stream_synchronize(stream_);
+
+    HostArray<Point<T, DIM>, 1> nu_loc_host(num_nu);
     if (nu_loc_.shape(0) != num_nu) {
-      nu_loc_ = HostArray<Point<T, DIM>, 1>(num_nu);
+      nu_loc_.reset(num_nu, device_alloc_);
     }
 
-    rescale_loc<T, DIM>(num_nu, loc, nu_loc_.data());
+    rescale_loc<T, DIM>(num_nu, loc, nu_loc_host.data());
+    gpu::memcopy(nu_loc_host, nu_loc_, stream_);
+    api::stream_synchronize(stream_);
   }
 
 private:
@@ -130,13 +135,13 @@ private:
   Options opt_;
   api::StreamType stream_;
   std::array<IntType, DIM> modes_;
-  HostArray<Point<T,DIM>, 1> nu_loc_;
+  DeviceArray<Point<T, DIM>, 1> nu_loc_;
   std::vector<PartitionGroup> nu_partition_;
-  std::array<HostArray<T, 1>, DIM> correction_factors_;
+  std::array<DeviceArray<T, 1>, DIM> correction_factors_;
   KernelParameters<T> kernel_param_;
   int sign_;
   FFTGrid<T, DIM> fft_grid_;
 };
 
-} // namespace gpu
-} // namespace neonufft
+}  // namespace gpu
+}  // namespace neonufft
