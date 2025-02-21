@@ -235,7 +235,7 @@ public:
   }
 
   void transform(std::complex<T> *out) {
-    fft_grid_.view().zero();
+    fft_grid_.padded_view().zero();
 
     // TODO: folding might not be needed. Do we ever have points on the actual
     // edges? check how points are rescaled. Unit tests show values in padding

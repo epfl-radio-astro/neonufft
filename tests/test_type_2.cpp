@@ -2,19 +2,31 @@
 #include <array>
 #include <complex>
 #include <functional>
+#include <memory>
 #include <numeric>
 #include <random>
 #include <tuple>
 #include <vector>
 #include <cmath>
 
+#include "gpu/util/runtime_api.hpp"
 #include "neonufft/config.h"
+// ---
 
 #include "neonufft/enums.h"
+#include "neonufft/gpu/types.hpp"
 #include "neonufft/plan.hpp"
 #include "neonufft/types.hpp"
 #include "util/math.hpp"
 #include "gtest/gtest.h"
+
+#if defined(NEONUFFT_CUDA) || defined(NEONUFFT_ROCM)
+#include "gpu/memory/copy.hpp"
+#include "gpu/memory/device_array.hpp"
+#include "memory/view.hpp"
+#include "neonufft/gpu/device_allocator.hpp"
+#include "neonufft/gpu/plan.hpp"
+#endif
 
 using namespace neonufft;
 
@@ -22,11 +34,15 @@ namespace {
 
 struct Type2TestParam {
   using TupleType = std::tuple<IntType, IntType, IntType, IntType, IntType,
-                               double, double, int>;
-  Type2TestParam(const TupleType &t)
-      : dim(std::get<0>(t)), num_nu(std::get<1>(t)),
+                               double, double, int, bool>;
+  Type2TestParam(const TupleType& t)
+      : dim(std::get<0>(t)),
+        num_nu(std::get<1>(t)),
         modes({std::get<2>(t), std::get<3>(t), std::get<4>(t)}),
-        upsampfac(std::get<5>(t)), tol(std::get<6>(t)), sign(std::get<7>(t)) {}
+        upsampfac(std::get<5>(t)),
+        tol(std::get<6>(t)),
+        sign(std::get<7>(t)),
+        use_gpu(std::get<8>(t)) {}
 
   IntType dim;
   std::array<IntType, 3> modes;
@@ -34,6 +50,7 @@ struct Type2TestParam {
   double upsampfac;
   double tol;
   int sign;
+  bool use_gpu;
 };
 
 template <typename T, typename GEN>
@@ -140,10 +157,9 @@ void transform_t2(int sign, std::array<IntType, 3> modes,
 } // namespace ref
 
 template <typename T, IntType DIM>
-void compare_t2(int sign, double upsampfac, double tol,
+void compare_t2(bool use_gpu, int sign, double upsampfac, double tol,
                 std::array<IntType, DIM> modes, IntType num_nu,
-                std::array<const T *, DIM> out_points) {
-
+                std::array<const T*, DIM> out_points) {
   Options opt;
   opt.upsampfac = upsampfac;
   opt.tol = tol;
@@ -164,8 +180,29 @@ void compare_t2(int sign, double upsampfac, double tol,
    strides[i] = strides[i - 1] * modes[i - 1];
   }
 
-  Plan<T, DIM> plan(opt, sign, num_nu, out_points, modes);
-  plan.transform_type_2(input.data(), strides, output.data());
+  std::shared_ptr<Allocator> device_alloc;
+
+  if (use_gpu) {
+#if defined(NEONUFFT_CUDA) || defined(NEONUFFT_ROCM)
+   device_alloc.reset(new gpu::DeviceAllocator());
+
+   gpu::DeviceArray<gpu::ComplexType<T>, 1> input_device(input.size(), device_alloc);
+   gpu::DeviceArray<gpu::ComplexType<T>, 1> output_device(output.size(), device_alloc);
+   gpu::memcopy(ConstHostView<std::complex<T>,1>(input.data(), input.size(), 1), input_device, nullptr);
+
+   gpu::Plan<T, DIM> plan(opt, sign, num_nu, out_points, modes, nullptr);
+   plan.transform_type_2(input_device.data(), strides, output_device.data());
+
+   gpu::memcopy(output_device, HostView<std::complex<T>, 1>(output.data(), output.size(), 1),
+                nullptr);
+   gpu::api::stream_synchronize(nullptr);
+#else
+   ASSERT_TRUE(false);
+#endif
+  } else {
+    Plan<T, DIM> plan(opt, sign, num_nu, out_points, modes);
+    plan.transform_type_2(input.data(), strides, output.data());
+  }
 
   ref::transform_t2<T>(sign, modes, input.data(), num_nu, out_points,
                        output_ref.data(), strides);
@@ -212,22 +249,21 @@ public:
    auto out_points_x = rand_vec<T>(rand_gen, param.num_nu, 20, 30);
 
    if (param.dim == 1) {
-      compare_t2<T, 1>(param.sign, param.upsampfac, param.tol, {param.modes[0]},
+      compare_t2<T, 1>(param.use_gpu, param.sign, param.upsampfac, param.tol, {param.modes[0]},
                        param.num_nu, {out_points_x.data()});
    } else {
 
      auto out_points_y = rand_vec<T>(rand_gen, param.num_nu, -20, 20);
 
      if (param.dim == 2) {
-       compare_t2<T, 2>(param.sign, param.upsampfac, param.tol,
+       compare_t2<T, 2>(param.use_gpu, param.sign, param.upsampfac, param.tol,
                         {param.modes[0], param.modes[1]}, param.num_nu,
                         {out_points_x.data(), out_points_y.data()});
      } else {
        auto out_points_z = rand_vec<T>(rand_gen, param.num_nu, -20, -15);
-       compare_t2<T, 3>(
-           param.sign, param.upsampfac, param.tol,
-           {param.modes[0], param.modes[1], param.modes[2]}, param.num_nu,
-           {out_points_x.data(), out_points_y.data(), out_points_z.data()});
+       compare_t2<T, 3>(param.use_gpu, param.sign, param.upsampfac, param.tol,
+                        {param.modes[0], param.modes[1], param.modes[2]}, param.num_nu,
+                        {out_points_x.data(), out_points_y.data(), out_points_z.data()});
      }
    }
  }
@@ -290,6 +326,10 @@ static auto param_type_names(
 
   Type2TestParam param(info.param);
 
+  if (param.use_gpu)
+    stream << "gpu_" << param.dim;
+  else
+    stream << "host_" << param.dim;
   stream << "d_" << param.dim;
   stream << "_n_" << param.num_nu;
   stream << "_modes_" << param.modes[0];
@@ -304,28 +344,36 @@ static auto param_type_names(
   return stream.str();
 }
 
+#if defined(NEONUFFT_CUDA) || defined(NEONUFFT_ROCM)
+#define NEONUFFT_PU_VALUES false, true
+#else
+#define NEONUFFT_PU_VALUES false
+#endif
+
 INSTANTIATE_TEST_SUITE_P(
     Type2, Type2TestFloat,
-    ::testing::Combine(::testing::Values<IntType>(1, 2, 3), // dimension
+    ::testing::Combine(::testing::Values<IntType>(1, 2, 3),  // dimension
                        ::testing::Values<IntType>(1, 10, 200,
-                                                  503), // number of in points
-                       ::testing::Values<IntType>(1, 10, 200, 503), // mode x
-                       ::testing::Values<IntType>(1),               // mode y
-                       ::testing::Values<IntType>(1),               // mode z
-                       ::testing::Values<double>(2.0), // upsampling factor
-                       ::testing::Values<double>(1e-4, 1e-6), // tolerance
-                       ::testing::Values<int>(1, -1)),        // sign
+                                                  503),               // number of in points
+                       ::testing::Values<IntType>(1, 10, 200, 503),   // mode x
+                       ::testing::Values<IntType>(1),                 // mode y
+                       ::testing::Values<IntType>(1),                 // mode z
+                       ::testing::Values<double>(2.0),                // upsampling factor
+                       ::testing::Values<double>(1e-4, 1e-6),         // tolerance
+                       ::testing::Values<int>(1, -1),                 // sign
+                       ::testing::Values<bool>(NEONUFFT_PU_VALUES)),  // cpu, gpu
     param_type_names);
 
 INSTANTIATE_TEST_SUITE_P(
     Type2, Type2TestDouble,
-    ::testing::Combine(::testing::Values<IntType>(1, 2, 3), // dimension
+    ::testing::Combine(::testing::Values<IntType>(1, 2, 3),  // dimension
                        ::testing::Values<IntType>(1, 10, 200,
-                                                  503), // number of in points
-                       ::testing::Values<IntType>(1, 10, 200, 503), // mode x
-                       ::testing::Values<IntType>(1),               // mode y
-                       ::testing::Values<IntType>(1),               // mode z
-                       ::testing::Values<double>(2.0), // upsampling factor
-                       ::testing::Values<double>(1e-4, 1e-7), // tolerance
-                       ::testing::Values<int>(1, -1)),        // sign
+                                                  503),               // number of in points
+                       ::testing::Values<IntType>(1, 10, 200, 503),   // mode x
+                       ::testing::Values<IntType>(1),                 // mode y
+                       ::testing::Values<IntType>(1),                 // mode z
+                       ::testing::Values<double>(2.0),                // upsampling factor
+                       ::testing::Values<double>(1e-4, 1e-7),         // tolerance
+                       ::testing::Values<int>(1, -1),                 // sign
+                       ::testing::Values<bool>(NEONUFFT_PU_VALUES)),  // cpu, gpu
     param_type_names);

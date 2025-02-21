@@ -54,7 +54,7 @@ public:
 
   void transform_type_2(const ComplexType<T>* in, std::array<IntType, DIM> in_strides,
                         ComplexType<T>* out) {
-    fft_grid_.view().zero(stream_);
+    fft_grid_.padded_view().zero(stream_);
 
     std::array<ConstDeviceView<T, 1>, DIM> correction_factor_views;
     for (IntType dim = 0; dim < DIM; ++dim) {

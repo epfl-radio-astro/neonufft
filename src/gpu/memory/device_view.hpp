@@ -121,8 +121,8 @@ public:
           api::memset_async(v_.data(), 0, v_.size() * sizeof(T), stream);
         } else {
           if constexpr (DIM == 2) {
-            api::memset_2d_async(v_.data(), v_.strides(1), 0, v_.shape(0) * sizeof(T), v_.shape(1),
-                                 stream);
+            api::memset_2d_async(v_.data(), v_.strides(1) * sizeof(T), 0, v_.shape(0) * sizeof(T),
+                                 v_.shape(1), stream);
           } else {
             for (IntType i = 0; i < v_.shape(DIM - 1); ++i) this->slice_view(i).zero(stream);
           }

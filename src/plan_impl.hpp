@@ -69,7 +69,7 @@ public:
   void transform_type_2(const std::complex<T> *in,
                         std::array<IntType, DIM> in_strides,
                         std::complex<T> *out) {
-    fft_grid_.view().zero();
+    fft_grid_.padded_view().zero();
 
     std::array<ConstHostView<T, 1>, DIM> correction_factor_views;
     for (IntType dim = 0; dim < DIM; ++dim) {
