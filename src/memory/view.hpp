@@ -253,6 +253,14 @@ public:
     strides_.fill(1);
   }
 
+  NEONUFFT_H_D_FUNC ConstView(const ConstView&) = default;
+
+  NEONUFFT_H_D_FUNC ConstView(ConstView&&) = default;
+
+  NEONUFFT_H_D_FUNC ConstView& operator=(const ConstView&) = default;
+
+  NEONUFFT_H_D_FUNC ConstView& operator=(ConstView&&) = default;
+
   NEONUFFT_H_D_FUNC ConstView(const T* ptr, const IndexType& shape, const IndexType& strides)
       : shape_(shape), strides_(strides), totalSize_(view_size(shape)), constPtr_(ptr) {
 #ifndef NDEBUG
@@ -341,6 +349,14 @@ public:
 
   NEONUFFT_H_D_FUNC View() = default;
 
+  NEONUFFT_H_D_FUNC View(const View&) = default;
+
+  NEONUFFT_H_D_FUNC View(View&&) = default;
+
+  NEONUFFT_H_D_FUNC View& operator=(const View&) = default;
+
+  NEONUFFT_H_D_FUNC View& operator=(View&&) = default;
+
   NEONUFFT_H_D_FUNC View(T* ptr, const IndexType& shape, const IndexType& strides)
       : v_(ptr, shape, strides) {}
 
@@ -373,7 +389,7 @@ public:
   }
 
   NEONUFFT_H_D_FUNC inline auto slice_view(IntType outer_index) const -> SliceType {
-    return SliceType(v_.slice_view(outer_index));
+    return v_.slice_view(outer_index);
   }
 
   NEONUFFT_H_D_FUNC inline auto sub_view(const IndexType& offset, const IndexType& shape) const
@@ -384,7 +400,7 @@ public:
 private:
   friend View<T, DIM + 1>;
 
-  View(const ConstView<T, DIM>& v) : v_(v) {}
+  NEONUFFT_H_D_FUNC View(const ConstView<T, DIM>& v) : v_(v) {}
 
   ConstView<T, DIM> v_;
 };

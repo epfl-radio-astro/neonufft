@@ -54,8 +54,7 @@ public:
 
   // Allocate array of given shape, such that the inner dimension is padded for
   // alignment of each inner slice.
-  DeviceArray(const IndexType &shape, std::shared_ptr<Allocator> alloc)
-  {
+  DeviceArray(const IndexType& shape, std::shared_ptr<Allocator> alloc) {
     const auto allocate_size = view_size(shape);
     auto ptr = static_cast<T*>(alloc->allocate(allocate_size * sizeof(T)));
 

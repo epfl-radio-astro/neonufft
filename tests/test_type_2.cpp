@@ -327,9 +327,9 @@ static auto param_type_names(
   Type2TestParam param(info.param);
 
   if (param.use_gpu)
-    stream << "gpu_" << param.dim;
+    stream << "gpu_";
   else
-    stream << "host_" << param.dim;
+    stream << "host_";
   stream << "d_" << param.dim;
   stream << "_n_" << param.num_nu;
   stream << "_modes_" << param.modes[0];

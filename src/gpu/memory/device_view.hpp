@@ -54,6 +54,14 @@ public:
 
   NEONUFFT_H_D_FUNC DeviceView() = default;
 
+  NEONUFFT_H_D_FUNC DeviceView(const DeviceView&) = default;
+
+  NEONUFFT_H_D_FUNC DeviceView(DeviceView&&) = default;
+
+  NEONUFFT_H_D_FUNC DeviceView& operator=(const DeviceView&) = default;
+
+  NEONUFFT_H_D_FUNC DeviceView& operator=(DeviceView&&) = default;
+
   NEONUFFT_H_D_FUNC explicit DeviceView(const View<T, DIM>& v) : v_(v){};
 
   NEONUFFT_H_D_FUNC DeviceView(T* ptr, const IndexType& shape, const IndexType& strides)
@@ -145,6 +153,14 @@ public:
   static inline constexpr IntType dimension = DIM;
 
   NEONUFFT_H_D_FUNC ConstDeviceView() = default;
+
+  NEONUFFT_H_D_FUNC ConstDeviceView(const ConstDeviceView&) = default;
+
+  NEONUFFT_H_D_FUNC ConstDeviceView(ConstDeviceView&&) = default;
+
+  NEONUFFT_H_D_FUNC ConstDeviceView& operator=(const ConstDeviceView&) = default;
+
+  NEONUFFT_H_D_FUNC ConstDeviceView& operator=(ConstDeviceView&&) = default;
 
   NEONUFFT_H_D_FUNC explicit ConstDeviceView(const ConstView<T, DIM>& v) : v_(v){};
 
