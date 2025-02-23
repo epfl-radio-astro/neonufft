@@ -100,23 +100,23 @@ public:
     fft_grid_.transform();
 
     //---
-    memcopy(fft_grid_.view(), fft_grid_host, stream_);
-    HostArray<Point<T, DIM>, 1> nu_loc_host(nu_loc_.shape());
-    memcopy(nu_loc_, nu_loc_host, stream_);
-    api::stream_synchronize(stream_);
+    // memcopy(fft_grid_.view(), fft_grid_host, stream_);
+    // HostArray<Point<T, DIM>, 1> nu_loc_host(nu_loc_.shape());
+    // memcopy(nu_loc_, nu_loc_host, stream_);
+    // api::stream_synchronize(stream_);
 
-    HostArray<std::complex<T>, 1> out_host(nu_loc_.shape());
+    // HostArray<std::complex<T>, 1> out_host(nu_loc_.shape());
 
-    ::neonufft::interpolate<T, DIM>(opt_.kernel_type, kernel_param_, fft_grid_host,
-                                    nu_loc_host.shape(0), nu_loc_host.data(), out_host.data());
+    // ::neonufft::interpolate<T, DIM>(opt_.kernel_type, kernel_param_, fft_grid_host,
+    //                                 nu_loc_host.shape(0), nu_loc_host.data(), out_host.data());
 
-    memcopy(out_host, DeviceView<ComplexType<T>, 1>(out, nu_loc_.size(), 1), stream_);
-    api::stream_synchronize(stream_);
+    // memcopy(out_host, DeviceView<ComplexType<T>, 1>(out, nu_loc_.size(), 1), stream_);
+    // api::stream_synchronize(stream_);
     //---
 
 
-    // gpu::interpolation<T, DIM>(device_prop_, stream_, kernel_param_, nu_loc_, fft_grid_.view(),
-    //                            DeviceView<ComplexType<T>, 1>(out, nu_loc_.size(), 1));
+    gpu::interpolation<T, DIM>(device_prop_, stream_, kernel_param_, nu_loc_, fft_grid_.view(),
+                               DeviceView<ComplexType<T>, 1>(out, nu_loc_.size(), 1));
   }
 
   void set_modes(std::array<IntType, DIM> modes) {

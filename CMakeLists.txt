@@ -145,6 +145,7 @@ if(NEONUFFT_CUDA)
 endif()
 
 if(NEONUFFT_ROCM)
+  # find_package(hipcub CONFIG REQUIRED)
   message(FATAL_ERROR "ROCM backend not yet implemented")
 endif()
 
