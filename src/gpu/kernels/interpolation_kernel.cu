@@ -1,17 +1,14 @@
 #include "neonufft//config.h"
 //---
-// #include "gpu/kernels/interpolation_kernel.hpp"
-
 #include <algorithm>
-#include <array>
 
 #include "es_kernel_param.hpp"
+#include "gpu/kernels/interpolation_kernel.hpp"
 #include "gpu/memory/device_view.hpp"
 #include "gpu/util/cub_api.hpp"
 #include "gpu/util/kernel_launch_grid.hpp"
 #include "gpu/util/runtime.hpp"
 #include "gpu/util/runtime_api.hpp"
-#include "neonufft/enums.h"
 #include "neonufft/gpu/types.hpp"
 #include "util/point.hpp"
 
@@ -57,8 +54,8 @@ __global__ static void __launch_bounds__(BLOCK_SIZE)
 
   for (IntType idx = threadIdx.x + blockIdx.x * BLOCK_SIZE; idx < points.shape(0);
        idx += block_step) {
-    const auto p = points[idx];
-    const T loc = p.coord[0] * grid.shape(0);  // px in [0, 1]
+    const auto point = points[idx];
+    const T loc = point.coord[0] * grid.shape(0);  // px in [0, 1]
     const T idx_init_ceil = ceil(loc - half_width);
     IntType idx_init = IntType(idx_init_ceil);  // fine padded_grid start index (-
     T x = idx_init_ceil - loc;                  // x1 in [-w/2,-w/2+1], up to rounding
@@ -95,7 +92,7 @@ __global__ static void __launch_bounds__(BLOCK_SIZE)
       sum.y += ker_val * grid_val.y;
     }
 
-    out[idx] = sum;
+    out[point.index] = sum;
   }
 }
 
@@ -113,14 +110,17 @@ __global__ static void __launch_bounds__(BLOCK_SIZE)
 
   __shared__ T ker_storage[2 * N_SPREAD * n_warps_per_block];
 
-  const int n_warps_global =  n_warps_per_block * gridDim.x;
+  const int n_warps_global = n_warps_per_block * gridDim.x;
   const int local_warp_id = threadIdx.x / WARP_SIZE;
   const int global_warp_id = local_warp_id + blockIdx.x * n_warps_per_block;
   const int warp_thread_id = threadIdx.x % WARP_SIZE;
 
-  constexpr int col_per_warp = WARP_SIZE / N_SPREAD;
+  constexpr int ker_step_size_y = WARP_SIZE / N_SPREAD;
   const int col_init = warp_thread_id / N_SPREAD;
   const int idx_ker_x = warp_thread_id % N_SPREAD;
+
+  const IntType points_per_warp = (points.shape(0) + n_warps_global - 1) / n_warps_global;
+  const IntType idx_point_init = global_warp_id * points_per_warp;
 
   T* ker = ker_storage + 2 * N_SPREAD * local_warp_id;
   T* ker_x = ker;
@@ -128,7 +128,10 @@ __global__ static void __launch_bounds__(BLOCK_SIZE)
 
   const T half_width = T(N_SPREAD) / T(2);  // half spread width
 
-  for (IntType idx = global_warp_id; idx < points.shape(0); idx += n_warps_global) {
+  // iterate over points, such that close points are processed by close warps. Helps with caching if
+  // points are spatially sorted.
+  for (IntType idx = idx_point_init;
+       idx < points.shape(0) && idx < idx_point_init + points_per_warp; ++idx) {
     ComplexType<T> sum{0, 0};
 
     const auto point = points[idx];
@@ -138,10 +141,10 @@ __global__ static void __launch_bounds__(BLOCK_SIZE)
     const T idx_init_ceil_y = ceil(loc_y - half_width);
 
     IntType idx_init_x = IntType(idx_init_ceil_x);  // fine padded_grid start index (-
-    T p_x = idx_init_ceil_x - loc_x;                  // x1 in [-w/2,-w/2+1], up to rounding
-                                                      //
+    T p_x = idx_init_ceil_x - loc_x;                // x1 in [-w/2,-w/2+1], up to rounding
+                                                    //
     IntType idx_init_y = IntType(idx_init_ceil_y);  // fine padded_grid start index (-
-    T p_y = idx_init_ceil_y - loc_y;                  // x1 in [-w/2,-w/2+1], up to rounding
+    T p_y = idx_init_ceil_y - loc_y;                // x1 in [-w/2,-w/2+1], up to rounding
 
     // precompute kernel values. [0, N_SPREAD) threads compute along x and [N_SPREAD, 2*N_SPREAD)
     // along y axis
@@ -157,7 +160,7 @@ __global__ static void __launch_bounds__(BLOCK_SIZE)
     __syncwarp();
 #endif
 
-    if (warp_thread_id < col_per_warp * N_SPREAD && col_init < N_SPREAD) {
+    if (warp_thread_id < ker_step_size_y * N_SPREAD && col_init < N_SPREAD) {
       const T ker_value_x = ker_x[idx_ker_x];
       auto grid_idx_x = idx_init_x + idx_ker_x;
       if (grid_idx_x < 0)
@@ -165,7 +168,7 @@ __global__ static void __launch_bounds__(BLOCK_SIZE)
       else if (grid_idx_x >= grid.shape(0))
         grid_idx_x -= grid.shape(0);
 
-      for (int idx_ker_y = col_init; idx_ker_y < N_SPREAD; idx_ker_y += col_per_warp) {
+      for (int idx_ker_y = col_init; idx_ker_y < N_SPREAD; idx_ker_y += ker_step_size_y) {
         auto grid_idx_y = idx_init_y + idx_ker_y;
         if (grid_idx_y < 0)
           grid_idx_y += grid.shape(1);
@@ -181,18 +184,155 @@ __global__ static void __launch_bounds__(BLOCK_SIZE)
     }
 
     T sum_real = WarpReduce(temp_storage[local_warp_id]).Sum(sum.x);
-    // sync not available / required on AMD
 #if defined(__CUDACC__)
     __syncwarp();
 #endif
+
     T sum_imag = WarpReduce(temp_storage[local_warp_id]).Sum(sum.y);
 #if defined(__CUDACC__)
     __syncwarp();
 #endif
 
-    //TODO use Point index
     if (warp_thread_id == 0) {
-      out[idx] = ComplexType<T>{sum_real, sum_imag};
+      out[point.index] = ComplexType<T>{sum_real, sum_imag};
+    }
+  }
+}
+
+template <typename KER, typename T, int N_SPREAD, int BLOCK_SIZE, int WARP_SIZE>
+__global__ static void __launch_bounds__(BLOCK_SIZE)
+    interpolation_3d_kernel(KER kernel, ConstDeviceView<Point<T, 3>, 1> points,
+                            ConstDeviceView<ComplexType<T>, 3> grid,
+                            DeviceView<ComplexType<T>, 1> out) {
+  static_assert(2 * N_SPREAD <= WARP_SIZE);
+
+  constexpr int n_warps_per_block = BLOCK_SIZE / WARP_SIZE;
+
+  using WarpReduce = typename cub_api::WarpReduce<T>;
+  __shared__ typename WarpReduce::TempStorage temp_storage[n_warps_per_block];
+
+  __shared__ T ker_storage[3 * N_SPREAD * n_warps_per_block];
+
+  const int n_warps_global = n_warps_per_block * gridDim.x;
+  const int local_warp_id = threadIdx.x / WARP_SIZE;
+  const int global_warp_id = local_warp_id + blockIdx.x * n_warps_per_block;
+  const int warp_thread_id = threadIdx.x % WARP_SIZE;
+
+  constexpr int ker_step_size_y = WARP_SIZE / N_SPREAD;
+  const int col_init = warp_thread_id / N_SPREAD;
+  const int idx_ker_x = warp_thread_id % N_SPREAD;
+
+  const IntType points_per_warp = (points.shape(0) + n_warps_global - 1) / n_warps_global;
+  const IntType idx_point_init = global_warp_id * points_per_warp;
+
+  T* ker = ker_storage + 3 * N_SPREAD * local_warp_id;
+  T* ker_x = ker;
+  T* ker_y = ker + N_SPREAD;
+  T* ker_z = ker + 2 * N_SPREAD;
+
+  const T half_width = T(N_SPREAD) / T(2);  // half spread width
+
+  // iterate over points, such that close points are processed by close warps. Helps with caching if
+  // points are spatially sorted.
+  for (IntType idx = idx_point_init;
+       idx < points.shape(0) && idx < idx_point_init + points_per_warp; ++idx) {
+    ComplexType<T> sum{0, 0};
+
+    const auto point = points[idx];
+    const T loc_x = point.coord[0] * grid.shape(0);  // px in [0, 1]
+    const T idx_init_ceil_x = ceil(loc_x - half_width);
+    IntType idx_init_x = IntType(idx_init_ceil_x);  // fine padded_grid start index (-
+    T p_x = idx_init_ceil_x - loc_x;                // x1 in [-w/2,-w/2+1], up to rounding
+
+    const T loc_y = point.coord[1] * grid.shape(1);  // px in [0, 1]
+    const T idx_init_ceil_y = ceil(loc_y - half_width);
+    IntType idx_init_y = IntType(idx_init_ceil_y);   // fine padded_grid start index (-
+    T p_y = idx_init_ceil_y - loc_y;                 // x1 in [-w/2,-w/2+1], up to rounding
+                                                     //
+    const T loc_z = point.coord[2] * grid.shape(2);  // px in [0, 1]
+    const T idx_init_ceil_z = ceil(loc_z - half_width);
+    IntType idx_init_z = IntType(idx_init_ceil_z);  // fine padded_grid start index (-
+    T p_z = idx_init_ceil_z - loc_z;                // x1 in [-w/2,-w/2+1], up to rounding
+
+    // precompute kernel values. [0, N_SPREAD) threads compute along x and [N_SPREAD, 2*N_SPREAD)
+    // along y axis
+    if constexpr (WARP_SIZE <= 3 * N_SPREAD) {
+      if (warp_thread_id < 3 * N_SPREAD) {
+        // select input for thread partitioned into [0, N_SPREAD), [N_SPREAD, 2*N_SPREAD) and
+        // [N_SPREAD, 3*N_SPREAD)
+        T ker_input = warp_thread_id < N_SPREAD
+                          ? p_x + warp_thread_id
+                          : (warp_thread_id < 2 * N_SPREAD ? p_y + (warp_thread_id - N_SPREAD)
+                                                           : p_z + (warp_thread_id - 2 * N_SPREAD));
+
+        // expensive kernel evaluation
+        ker[warp_thread_id] = kernel.eval_scalar(ker_input);
+      }
+    } else {
+      if (warp_thread_id < 2 * N_SPREAD) {
+        T ker_input =
+            warp_thread_id < N_SPREAD ? p_x + warp_thread_id : p_y + (warp_thread_id - N_SPREAD);
+
+        // expensive kernel evaluation
+        ker[warp_thread_id] = kernel.eval_scalar(ker_input);
+      }
+      if (warp_thread_id < N_SPREAD) {
+        T ker_input = p_z + warp_thread_id;
+
+        // expensive kernel evaluation
+        ker[warp_thread_id + 2 * N_SPREAD] = kernel.eval_scalar(ker_input);
+      }
+    }
+    // sync not available / required on AMD
+#if defined(__CUDACC__)
+    __syncwarp();
+#endif
+
+    if (warp_thread_id < ker_step_size_y * N_SPREAD && col_init < N_SPREAD) {
+      const T ker_value_x = ker_x[idx_ker_x];
+      auto grid_idx_x = idx_init_x + idx_ker_x;
+      if (grid_idx_x < 0)
+        grid_idx_x += grid.shape(0);
+      else if (grid_idx_x >= grid.shape(0))
+        grid_idx_x -= grid.shape(0);
+
+      // TODO: optimize for non-wrapped case
+      for (int idx_ker_z = 0; idx_ker_z < N_SPREAD; ++idx_ker_z) {
+        const T ker_value_xz = ker_value_x * ker_z[idx_ker_z];
+        auto grid_idx_z = idx_init_z + idx_ker_z;
+        if (grid_idx_z < 0)
+          grid_idx_z += grid.shape(2);
+        else if (grid_idx_z >= grid.shape(2))
+          grid_idx_z -= grid.shape(2);
+
+        for (int idx_ker_y = col_init; idx_ker_y < N_SPREAD; idx_ker_y += ker_step_size_y) {
+          auto grid_idx_y = idx_init_y + idx_ker_y;
+          if (grid_idx_y < 0)
+            grid_idx_y += grid.shape(1);
+          else if (grid_idx_y >= grid.shape(1))
+            grid_idx_y -= grid.shape(1);
+
+          const auto grid_value = grid[{grid_idx_x, grid_idx_y, grid_idx_z}];
+
+          const T ker_value = ker_value_xz * ker_y[idx_ker_y];
+          sum.x += ker_value * grid_value.x;
+          sum.y += ker_value * grid_value.y;
+        }
+      }
+    }
+
+    T sum_real = WarpReduce(temp_storage[local_warp_id]).Sum(sum.x);
+#if defined(__CUDACC__)
+    __syncwarp();
+#endif
+
+    T sum_imag = WarpReduce(temp_storage[local_warp_id]).Sum(sum.y);
+#if defined(__CUDACC__)
+    __syncwarp();
+#endif
+
+    if (warp_thread_id == 0) {
+      out[point.index] = ComplexType<T>{sum_real, sum_imag};
     }
   }
 }
@@ -206,7 +346,7 @@ auto interpolation_dispatch(const api::DevicePropType& prop, const api::StreamTy
   static_assert(N_SPREAD >= 2);
   static_assert(N_SPREAD <= 16);
 
-  if(param.n_spread == N_SPREAD) {
+  if (param.n_spread == N_SPREAD) {
     EsKernelDirect<T, N_SPREAD> kernel{param.es_beta};
     const dim3 block_dim(std::min<int>(BLOCK_SIZE, prop.maxThreadsDim[0]), 1, 1);
     const auto grid_dim = kernel_launch_grid(prop, {points.size(), 1, 1}, block_dim);
@@ -219,7 +359,9 @@ auto interpolation_dispatch(const api::DevicePropType& prop, const api::StreamTy
           interpolation_2d_kernel<decltype(kernel), T, N_SPREAD, BLOCK_SIZE, WARP_SIZE>, grid_dim,
           block_dim, 0, stream, kernel, points, grid, out);
     } else {
-      throw NotImplementedError("multi-dim interpolation not implemented on GPU");
+      api::launch_kernel(
+          interpolation_3d_kernel<decltype(kernel), T, N_SPREAD, BLOCK_SIZE, WARP_SIZE>, grid_dim,
+          block_dim, 0, stream, kernel, points, grid, out);
     }
   } else {
     if constexpr (N_SPREAD > 2) {
@@ -268,18 +410,18 @@ template auto interpolation<float, 3>(const api::DevicePropType& prop,
                                       DeviceView<ComplexType<float>, 1> out) -> void;
 
 template auto interpolation<double, 1>(const api::DevicePropType& prop,
-                                      const api::StreamType& stream,
-                                      const KernelParameters<double>& param,
-                                      ConstDeviceView<Point<double, 1>, 1> points,
-                                      ConstDeviceView<ComplexType<double>, 1> grid,
-                                      DeviceView<ComplexType<double>, 1> out) -> void;
+                                       const api::StreamType& stream,
+                                       const KernelParameters<double>& param,
+                                       ConstDeviceView<Point<double, 1>, 1> points,
+                                       ConstDeviceView<ComplexType<double>, 1> grid,
+                                       DeviceView<ComplexType<double>, 1> out) -> void;
 
 template auto interpolation<double, 2>(const api::DevicePropType& prop,
-                                      const api::StreamType& stream,
-                                      const KernelParameters<double>& param,
-                                      ConstDeviceView<Point<double, 2>, 1> points,
-                                      ConstDeviceView<ComplexType<double>, 2> grid,
-                                      DeviceView<ComplexType<double>, 1> out) -> void;
+                                       const api::StreamType& stream,
+                                       const KernelParameters<double>& param,
+                                       ConstDeviceView<Point<double, 2>, 1> points,
+                                       ConstDeviceView<ComplexType<double>, 2> grid,
+                                       DeviceView<ComplexType<double>, 1> out) -> void;
 
 template auto interpolation<double, 3>(const api::DevicePropType& prop,
                                        const api::StreamType& stream,

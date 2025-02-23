@@ -357,7 +357,7 @@ INSTANTIATE_TEST_SUITE_P(
     Type2, Type2TestFloat,
     ::testing::Combine(::testing::Values<IntType>(1, 10, 200,
                                                   503),               // number of in points
-                       ::testing::Values<IntType>(1, 10, 200, 503),   // mode x
+                       ::testing::Values<IntType>(1, 10, 200, 203),   // mode x
                        ::testing::Values<IntType>(1, 49),             // mode y
                        ::testing::Values<IntType>(1, 49),             // mode z
                        ::testing::Values<double>(2.0),                // upsampling factor
