@@ -33,24 +33,29 @@ using namespace neonufft;
 namespace {
 
 struct Type2TestParam {
-  using TupleType = std::tuple<IntType, IntType, IntType, IntType, IntType,
+  using TupleType = std::tuple<IntType, IntType, IntType, IntType,
                                double, double, int, bool>;
   Type2TestParam(const TupleType& t)
-      : dim(std::get<0>(t)),
-        num_nu(std::get<1>(t)),
-        modes({std::get<2>(t), std::get<3>(t), std::get<4>(t)}),
-        upsampfac(std::get<5>(t)),
-        tol(std::get<6>(t)),
-        sign(std::get<7>(t)),
-        use_gpu(std::get<8>(t)) {}
+      : num_nu(std::get<0>(t)),
+        modes({std::get<1>(t), std::get<2>(t), std::get<3>(t)}),
+        upsampfac(std::get<4>(t)),
+        tol(std::get<5>(t)),
+        sign(std::get<6>(t)),
+        use_gpu(std::get<7>(t)),
+        dim(1) {
+    if (modes[1] > 1 && modes[2] > 1)
+      dim = 3;
+    else if (modes[1] > 1)
+      dim = 2;
+  }
 
-  IntType dim;
   std::array<IntType, 3> modes;
   IntType num_nu;
   double upsampfac;
   double tol;
   int sign;
   bool use_gpu;
+  IntType dim;
 };
 
 template <typename T, typename GEN>
@@ -333,10 +338,8 @@ static auto param_type_names(
   stream << "d_" << param.dim;
   stream << "_n_" << param.num_nu;
   stream << "_modes_" << param.modes[0];
-  if (param.dim > 1)
-    stream << "_" << param.modes[1];
-  if (param.dim > 2)
-    stream << "_" << param.modes[2];
+  stream << "_" << param.modes[1];
+  stream << "_" << param.modes[2];
   stream << "_up_" << param.upsampfac;
   stream << "_tol_" << int(-std::log10(param.tol));
   stream << "_sign_" << (param.sign < 0 ? "minus" : "plus");
@@ -352,12 +355,11 @@ static auto param_type_names(
 
 INSTANTIATE_TEST_SUITE_P(
     Type2, Type2TestFloat,
-    ::testing::Combine(::testing::Values<IntType>(1, 2, 3),  // dimension
-                       ::testing::Values<IntType>(1, 10, 200,
+    ::testing::Combine(::testing::Values<IntType>(1, 10, 200,
                                                   503),               // number of in points
                        ::testing::Values<IntType>(1, 10, 200, 503),   // mode x
-                       ::testing::Values<IntType>(1),                 // mode y
-                       ::testing::Values<IntType>(1),                 // mode z
+                       ::testing::Values<IntType>(1, 49),             // mode y
+                       ::testing::Values<IntType>(1, 49),             // mode z
                        ::testing::Values<double>(2.0),                // upsampling factor
                        ::testing::Values<double>(1e-4, 1e-6),         // tolerance
                        ::testing::Values<int>(1, -1),                 // sign
@@ -366,12 +368,11 @@ INSTANTIATE_TEST_SUITE_P(
 
 INSTANTIATE_TEST_SUITE_P(
     Type2, Type2TestDouble,
-    ::testing::Combine(::testing::Values<IntType>(1, 2, 3),  // dimension
-                       ::testing::Values<IntType>(1, 10, 200,
+    ::testing::Combine(::testing::Values<IntType>(1, 10, 200,
                                                   503),               // number of in points
-                       ::testing::Values<IntType>(1, 10, 200, 503),   // mode x
-                       ::testing::Values<IntType>(1),                 // mode y
-                       ::testing::Values<IntType>(1),                 // mode z
+                       ::testing::Values<IntType>(1, 10, 100, 203),   // mode x
+                       ::testing::Values<IntType>(1, 49),             // mode y
+                       ::testing::Values<IntType>(1, 30),             // mode z
                        ::testing::Values<double>(2.0),                // upsampling factor
                        ::testing::Values<double>(1e-4, 1e-7),         // tolerance
                        ::testing::Values<int>(1, -1),                 // sign
