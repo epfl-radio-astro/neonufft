@@ -1,29 +1,31 @@
 #pragma once
 
-#include "neonufft/config.h"
-#include "neonufft/gpu/plan.hpp"
-#include "neonufft/gpu/device_allocator.hpp"
+#include <algorithm>
+#include <array>
+#include <complex>
+#include <cstddef>
 
 #include "es_kernel/util.hpp"
 #include "es_kernel_param.hpp"
-#include "gpu/util/runtime_api.hpp"
+#include "gpu/kernels/upsample_kernel.hpp"
+#include "gpu/kernels/interpolation_kernel.hpp"
+#include "../kernels/interpolation_kernel.hpp"
+#include "../kernels/upsample_kernel.hpp"
+#include "gpu/memory/copy.hpp"
 #include "gpu/memory/device_array.hpp"
+#include "gpu/util/runtime_api.hpp"
 #include "kernels/rescale_loc_kernel.hpp"
 #include "memory/array.hpp"
 #include "memory/view.hpp"
-#include "gpu/memory/copy.hpp"
-#include "kernels/rescale_loc_kernel.hpp"
+#include "neonufft/config.h"
 #include "neonufft/exceptions.hpp"
+#include "neonufft/gpu/device_allocator.hpp"
+#include "neonufft/gpu/plan.hpp"
 #include "neonufft/plan.hpp"
 #include "neonufft/types.hpp"
 #include "util/fft_grid.hpp"
 #include "util/point.hpp"
 #include "util/spread_padding.hpp"
-
-#include <algorithm>
-#include <array>
-#include <complex>
-#include <cstddef>
 
 namespace neonufft {
 namespace gpu {
@@ -43,6 +45,11 @@ public:
         sign_(sign) {
     kernel_param_ = KernelParameters<T>(opt_.tol, opt.upsampfac, opt.kernel_approximation);
 
+    int device_id = 0;
+    api::get_device(&device_id);
+    api::get_device_properties(&device_prop_, device_id);
+
+
     this->set_modes(modes);
     this->set_nu_points(num_nu, loc);
   }
@@ -61,15 +68,55 @@ public:
       correction_factor_views[dim] = correction_factors_[dim].view();
     }
 
-    ConstHostView<ComplexType<T>, DIM> in_view;
-    in_view = ConstHostView<ComplexType<T>, DIM>(in, modes_, in_strides);
+    ConstDeviceView<ComplexType<T>, DIM> in_view;
+    in_view = ConstDeviceView<ComplexType<T>, DIM>(in, modes_, in_strides);
 
-    // upsample<T, DIM>(opt_.order, in_view, correction_factor_views,
-    //                  fft_grid_.view());
+    gpu::upsample<T, DIM>(device_prop_, stream_, opt_.order, in_view, correction_factor_views,
+                          fft_grid_.view());
+
+
+
+    //---
+    // HostArray<std::complex<T>, DIM> fft_grid_host(fft_grid_.shape());
+    //---
+
+    // HostArray<std::complex<T>, DIM> in_host(in_view.shape());
+    // memcopy(in_view, in_host, stream_);
+    // std::array<HostArray<T, 1>, DIM> correction_factors_host;
+    // std::array<ConstHostView<T, 1>, DIM> correction_factor_views_host;
+    // for (std::size_t d = 0; d < DIM; ++d) {
+    //   correction_factors_host[d].reset(correction_factors_[d].shape());
+    //   correction_factor_views_host[d] = correction_factors_host[d];
+    //   memcopy(correction_factors_[d], correction_factors_host[d], stream_);
+    // }
+    // api::stream_synchronize(stream_);
+
+    // ::neonufft::upsample<T, DIM>(opt_.order, in_host, correction_factor_views_host, fft_grid_host);
+    // memcopy(fft_grid_host, fft_grid_.view(), stream_);
+
+    //---
+
+
     fft_grid_.transform();
 
-    // interpolate<T, DIM>(opt_.kernel_type, kernel_param_, fft_grid_.view(),
-    //                     nu_loc_.shape(0), nu_loc_.data(), out);
+    //---
+    // memcopy(fft_grid_.view(), fft_grid_host, stream_);
+    // HostArray<Point<T, DIM>, 1> nu_loc_host(nu_loc_.shape());
+    // memcopy(nu_loc_, nu_loc_host, stream_);
+    // api::stream_synchronize(stream_);
+
+    // HostArray<std::complex<T>, 1> out_host(nu_loc_.shape());
+
+    // ::neonufft::interpolate<T, DIM>(opt_.kernel_type, kernel_param_, fft_grid_host,
+    //                                 nu_loc_host.shape(0), nu_loc_host.data(), out_host.data());
+
+    // memcopy(out_host, DeviceView<ComplexType<T>, 1>(out, nu_loc_.size(), 1), stream_);
+    // api::stream_synchronize(stream_);
+    //---
+
+
+    gpu::interpolation<T, DIM>(device_prop_, stream_, kernel_param_, nu_loc_, fft_grid_.view(),
+                               DeviceView<ComplexType<T>, 1>(out, nu_loc_.size(), 1));
   }
 
   void set_modes(std::array<IntType, DIM> modes) {
@@ -141,6 +188,7 @@ private:
   KernelParameters<T> kernel_param_;
   int sign_;
   FFTGrid<T, DIM> fft_grid_;
+  api::DevicePropType device_prop_;
 };
 
 }  // namespace gpu

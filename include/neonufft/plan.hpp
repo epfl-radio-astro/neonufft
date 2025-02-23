@@ -23,7 +23,7 @@ struct NEONUFFT_EXPORT Options {
   int num_threads = 0;
   bool sort_input = true;
   bool sort_output = true;
-  bool kernel_approximation = true;
+  bool kernel_approximation = false;
   NeonufftModeOrder order = NEONUFFT_MODE_ORDER_CMCL;
   NeonufftKernelType kernel_type = NEONUFFT_ES_KERNEL;
 };

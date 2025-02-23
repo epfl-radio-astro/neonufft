@@ -64,13 +64,13 @@ public:
   NEONUFFT_H_D_FUNC operator View<T, DIM>() const { return v_; };
 
 #if defined(__CUDACC__) || defined(__HIPCC__)
-  __device__ __forceinline__ inline auto operator[](const IndexType& index) const noexcept
+  __device__ __forceinline__ auto operator[](const IndexType& index) const noexcept
       -> const T& {
     assert(impl::all_less(index, v_.shape()));
     return v_.data()[view_index(index, v_.strides())];
   }
 
-  __device__ __forceinline__ inline auto operator[](const IndexType& index) noexcept -> T& {
+  __device__ __forceinline__ auto operator[](const IndexType& index) noexcept -> T& {
     assert(impl::all_less(index, v_.shape()));
     return v_.data()[view_index(index, v_.strides())];
   }
@@ -156,9 +156,14 @@ public:
   NEONUFFT_H_D_FUNC operator ConstView<T, DIM>() const { return v_; };
 
 #if defined(__CUDACC__) || defined(__HIPCC__)
-  __device__ __forceinline__ inline auto operator[](const IndexType& index) const noexcept -> T {
+  __device__ __forceinline__ auto operator[](const IndexType& index) const noexcept -> T {
     assert(impl::all_less(index, v_.shape()));
-    return __ldg(v_.data() + view_index(index, v_.strides()));
+    if constexpr (std::is_same_v<T, ComplexType<float>> || std::is_same_v<T, ComplexType<double>> ||
+                  std::is_integral_v<T> || std::is_floating_point_v<T>) {
+      return __ldg(v_.data() + view_index(index, v_.strides()));
+    } else {
+      return *(v_.data() + view_index(index, v_.strides()));
+    }
   }
 #endif
 

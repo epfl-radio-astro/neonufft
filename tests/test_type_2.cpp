@@ -278,46 +278,46 @@ using Type2TestDouble = Type2Test<double>;
 
 TEST_P(Type2TestDouble, transform) { test_random(); }
 
-TEST(Type2TestEdges, d1) {
-  std::array<double, 2> points_x = {-math::pi<double>, math::pi<double>};
-  // compare_t2<double>(-1, 2, 1e-15, points_x.size(), points_x.data(), nullptr,
-  //                    nullptr, points_x.size(), points_x.data(), nullptr,
-  //                    nullptr);
-}
+// TEST(Type2TestEdges, d1) {
+//   std::array<double, 2> points_x = {-math::pi<double>, math::pi<double>};
+//   // compare_t2<double>(-1, 2, 1e-15, points_x.size(), points_x.data(), nullptr,
+//   //                    nullptr, points_x.size(), points_x.data(), nullptr,
+//   //                    nullptr);
+// }
 
-TEST(Type2TestEdges, d2) {
-  std::array<double, 3> points = {-math::pi<double>, 0.0, math::pi<double>};
-  std::vector<double> points_x;
-  std::vector<double> points_y;
-  for(const auto& x : points) {
-    for (const auto &y : points) {
-      points_x.emplace_back(x);
-      points_y.emplace_back(y);
-    }
-  }
-  // compare_t2<double>(-1, 2, 1e-15, points_x.size(), points_x.data(),
-  //                    points_y.data(), nullptr, points_x.size(), points_x.data(),
-  //                    points_y.data(), nullptr);
-}
+// TEST(Type2TestEdges, d2) {
+//   std::array<double, 3> points = {-math::pi<double>, 0.0, math::pi<double>};
+//   std::vector<double> points_x;
+//   std::vector<double> points_y;
+//   for(const auto& x : points) {
+//     for (const auto &y : points) {
+//       points_x.emplace_back(x);
+//       points_y.emplace_back(y);
+//     }
+//   }
+//   // compare_t2<double>(-1, 2, 1e-15, points_x.size(), points_x.data(),
+//   //                    points_y.data(), nullptr, points_x.size(), points_x.data(),
+//   //                    points_y.data(), nullptr);
+// }
 
-TEST(Type2TestEdges, d3) {
-  std::array<double, 3> points = {-math::pi<double>, 0.0, math::pi<double>};
-  std::vector<double> points_x;
-  std::vector<double> points_y;
-  std::vector<double> points_z;
-  for (const auto &x : points) {
-    for (const auto &y : points) {
-      for (const auto &z : points) {
-        points_x.emplace_back(x);
-        points_y.emplace_back(y);
-        points_z.emplace_back(z);
-      }
-    }
-  }
-  // compare_t2<double>(-1, 2, 1e-15, points_x.size(), points_x.data(),
-  //                    points_y.data(), points_z.data(), points_x.size(),
-  //                    points_x.data(), points_y.data(), points_z.data());
-}
+// TEST(Type2TestEdges, d3) {
+//   std::array<double, 3> points = {-math::pi<double>, 0.0, math::pi<double>};
+//   std::vector<double> points_x;
+//   std::vector<double> points_y;
+//   std::vector<double> points_z;
+//   for (const auto &x : points) {
+//     for (const auto &y : points) {
+//       for (const auto &z : points) {
+//         points_x.emplace_back(x);
+//         points_y.emplace_back(y);
+//         points_z.emplace_back(z);
+//       }
+//     }
+//   }
+//   // compare_t2<double>(-1, 2, 1e-15, points_x.size(), points_x.data(),
+//   //                    points_y.data(), points_z.data(), points_x.size(),
+//   //                    points_x.data(), points_y.data(), points_z.data());
+// }
 
 static auto param_type_names(
     const ::testing::TestParamInfo<Type2TestParam::TupleType> &info)

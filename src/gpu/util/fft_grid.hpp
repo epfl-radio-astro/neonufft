@@ -54,6 +54,7 @@ private:
   DeviceArray<ComplexType<T>, DIM> padded_grid_;
   DeviceArray<char, 1> workspace_;
   DeviceView<ComplexType<T>, DIM> grid_;
+  int sign_ = -1;
 };
 
 }  // namespace gpu

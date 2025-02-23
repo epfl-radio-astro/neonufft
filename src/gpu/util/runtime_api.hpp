@@ -1,6 +1,8 @@
 #pragma once
 
 #include "neonufft/config.h"
+// ---
+
 #include "neonufft/gpu/types.hpp"
 
 #if defined(NEONUFFT_CUDA)

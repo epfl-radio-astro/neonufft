@@ -18,7 +18,7 @@ FFTGrid<T, DIM>::FFTGrid() : plan_(nullptr, [](void *) {}) {}
 template <typename T, std::size_t DIM>
 FFTGrid<T, DIM>::FFTGrid(const std::shared_ptr<Allocator>& alloc, StreamType stream,
                          IndexType shape, int sign, IndexType padding)
-    : plan_(nullptr, [](void*) {}), padding_(padding) {
+    : plan_(nullptr, [](void*) {}), padding_(padding), sign_(sign) {
   auto paddedShape = shape;
   for (IntType d = 0; d < DIM; ++d) {
     paddedShape[d] += 2 * padding[d];
@@ -86,7 +86,10 @@ template <typename T, std::size_t DIM> void FFTGrid<T, DIM>::transform() {
   if (plan_) {
     auto plan_ptr = reinterpret_cast<fft::HandleType*>(plan_.get());
 
-    fft::execute(*plan_ptr, grid_.data(), gpu::fft::TransformDirection::Backward);
+    auto dir =
+        sign_ < 0 ? gpu::fft::TransformDirection::Forward : gpu::fft::TransformDirection::Backward;
+
+    fft::execute(*plan_ptr, grid_.data(), dir);
   } else {
     throw InternalError("GPU FFT Grid not initialized.");
   }

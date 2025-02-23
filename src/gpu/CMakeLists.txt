@@ -2,6 +2,8 @@ set(NEONUFFT_SOURCE_FILES
 	plan.cpp
 	device_allocator.cpp
 	util/fft_grid.cpp
+	kernels/upsample_kernel.cu
+	kernels/interpolation_kernel.cu
 	)
 
 

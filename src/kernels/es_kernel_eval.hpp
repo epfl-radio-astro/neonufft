@@ -34,12 +34,11 @@ template <typename T, IntType NSPREAD> struct EsKernelDirect {
   }
 
   HWY_INLINE HWY_ATTR T eval_scalar(T x) const {
-    if (std::abs(x) >= T(param.n_spread) / T(2))
-      return 0.0;
-    else
-      return std::exp(
-          param.es_beta *
-          (std::sqrt(std::max<T>(T(1) - param.es_c * x * x, 0)) - T(1)));
+    constexpr T es_c = T(4) / T(N_SPREAD * N_SPREAD);
+    const T arg = T(1) - es_c * x * x;
+    if (arg <= 0) return 0;
+
+    return std::exp(param.es_beta * (std::sqrt(arg) - T(1)));
   }
 
   // Evaluate kernel at N_SPREAD points starting from x_init in [-w/2, -w/2 + 1]
