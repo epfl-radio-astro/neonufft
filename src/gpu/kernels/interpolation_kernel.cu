@@ -296,27 +296,45 @@ __global__ static void __launch_bounds__(BLOCK_SIZE)
       else if (grid_idx_x >= grid.shape(0))
         grid_idx_x -= grid.shape(0);
 
-      // TODO: optimize for non-wrapped case
-      for (int idx_ker_z = 0; idx_ker_z < N_SPREAD; ++idx_ker_z) {
-        const T ker_value_xz = ker_value_x * ker_z[idx_ker_z];
-        auto grid_idx_z = idx_init_z + idx_ker_z;
-        if (grid_idx_z < 0)
-          grid_idx_z += grid.shape(2);
-        else if (grid_idx_z >= grid.shape(2))
-          grid_idx_z -= grid.shape(2);
+      if (idx_init_z < 0 || idx_init_z + N_SPREAD >= grid.shape(2) || idx_init_y < 0 ||
+          idx_init_y + N_SPREAD >= grid.shape(1)) {
+        for (int idx_ker_z = 0; idx_ker_z < N_SPREAD; ++idx_ker_z) {
+          const T ker_value_xz = ker_value_x * ker_z[idx_ker_z];
+          auto grid_idx_z = idx_init_z + idx_ker_z;
+          if (grid_idx_z < 0)
+            grid_idx_z += grid.shape(2);
+          else if (grid_idx_z >= grid.shape(2))
+            grid_idx_z -= grid.shape(2);
 
-        for (int idx_ker_y = col_init; idx_ker_y < N_SPREAD; idx_ker_y += ker_step_size_y) {
-          auto grid_idx_y = idx_init_y + idx_ker_y;
-          if (grid_idx_y < 0)
-            grid_idx_y += grid.shape(1);
-          else if (grid_idx_y >= grid.shape(1))
-            grid_idx_y -= grid.shape(1);
+          for (int idx_ker_y = col_init; idx_ker_y < N_SPREAD; idx_ker_y += ker_step_size_y) {
+            auto grid_idx_y = idx_init_y + idx_ker_y;
+            if (grid_idx_y < 0)
+              grid_idx_y += grid.shape(1);
+            else if (grid_idx_y >= grid.shape(1))
+              grid_idx_y -= grid.shape(1);
 
-          const auto grid_value = grid[{grid_idx_x, grid_idx_y, grid_idx_z}];
+            const auto grid_value = grid[{grid_idx_x, grid_idx_y, grid_idx_z}];
 
-          const T ker_value = ker_value_xz * ker_y[idx_ker_y];
-          sum.x += ker_value * grid_value.x;
-          sum.y += ker_value * grid_value.y;
+            const T ker_value = ker_value_xz * ker_y[idx_ker_y];
+            sum.x += ker_value * grid_value.x;
+            sum.y += ker_value * grid_value.y;
+          }
+        }
+      } else {
+        // TODO: fix false warning for unused variable
+        for (int idx_ker_z = 0; idx_ker_z < N_SPREAD; ++idx_ker_z) {
+          const T ker_value_xz = ker_value_x * ker_z[idx_ker_z];
+          auto grid_idx_z = idx_init_z + idx_ker_z;
+
+          for (int idx_ker_y = col_init; idx_ker_y < N_SPREAD; idx_ker_y += ker_step_size_y) {
+            auto grid_idx_y = idx_init_y + idx_ker_y;
+
+            const auto grid_value = grid[{grid_idx_x, grid_idx_y, grid_idx_z}];
+
+            const T ker_value = ker_value_xz * ker_y[idx_ker_y];
+            sum.x += ker_value * grid_value.x;
+            sum.y += ker_value * grid_value.y;
+          }
         }
       }
     }
