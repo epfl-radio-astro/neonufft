@@ -2,6 +2,12 @@
 
 #include "neonufft/config.h"
 
+// Disable scalable vector architetures, because we rely on vector lengths at compile time for
+// optizations
+#ifndef HWY_DISABLED_TARGETS 
+#define HWY_DISABLED_TARGETS (HWY_SVE|HWY_SVE2)
+#endif
+
 #ifndef HWY_TARGET_INCLUDE
 #error "HWY_TARGET_INCLUDE must be defined before including this header file"
 #endif

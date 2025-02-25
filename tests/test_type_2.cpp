@@ -9,14 +9,13 @@
 #include <vector>
 #include <cmath>
 
-#include "gpu/util/runtime_api.hpp"
 #include "neonufft/config.h"
 // ---
 
 #include "neonufft/enums.h"
-#include "neonufft/gpu/types.hpp"
 #include "neonufft/plan.hpp"
 #include "neonufft/types.hpp"
+#include "neonufft/allocator.hpp"
 #include "util/math.hpp"
 #include "gtest/gtest.h"
 
@@ -26,6 +25,7 @@
 #include "memory/view.hpp"
 #include "neonufft/gpu/device_allocator.hpp"
 #include "neonufft/gpu/plan.hpp"
+#include "neonufft/gpu/types.hpp"
 #endif
 
 using namespace neonufft;
