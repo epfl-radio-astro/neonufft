@@ -152,13 +152,12 @@ endif()
 # generate config.h
 configure_file(cmake/config.h.in ${PROJECT_BINARY_DIR}/include/neonufft/config.h)
 
-list(APPEND NEONUFFT_INCLUDE_DIRS ${PROJECT_SOURCE_DIR}/contrib)
 list(APPEND NEONUFFT_INCLUDE_DIRS ${PROJECT_SOURCE_DIR}/src)
 list(APPEND NEONUFFT_INCLUDE_DIRS ${PROJECT_SOURCE_DIR}/include)
 list(APPEND NEONUFFT_INCLUDE_DIRS ${PROJECT_BINARY_DIR}/include)
 
-add_subdirectory(contrib)
-add_subdirectory(src)
+add_subdirectory(src/contrib)
+add_subdirectory(src/neonufft)
 if(NEONUFFT_BUILD_TESTS)
   add_subdirectory(tests)
 endif()

@@ -16,13 +16,13 @@
 #include "neonufft/plan.hpp"
 #include "neonufft/types.hpp"
 #include "neonufft/allocator.hpp"
-#include "util/math.hpp"
+#include "neonufft/util/math.hpp"
 #include "gtest/gtest.h"
 
 #if defined(NEONUFFT_CUDA) || defined(NEONUFFT_ROCM)
-#include "gpu/memory/copy.hpp"
-#include "gpu/memory/device_array.hpp"
-#include "memory/view.hpp"
+#include "neonufft/gpu/memory/copy.hpp"
+#include "neonufft/gpu/memory/device_array.hpp"
+#include "neonufft/memory/view.hpp"
 #include "neonufft/gpu/device_allocator.hpp"
 #include "neonufft/gpu/plan.hpp"
 #include "neonufft/gpu/types.hpp"

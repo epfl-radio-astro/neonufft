@@ -7,9 +7,10 @@
 #include <random>
 
 #include "neonufft/config.h"
+//---
 
-#include "kernels/compute_prephase_kernel.hpp"
-#include "memory/array.hpp"
+#include "neonufft/kernels/compute_prephase_kernel.hpp"
+#include "neonufft/memory/array.hpp"
 #include "neonufft/types.hpp"
 #include "gtest/gtest.h"
 

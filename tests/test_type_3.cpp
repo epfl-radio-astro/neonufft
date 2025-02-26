@@ -7,11 +7,12 @@
 #include <cmath>
 
 #include "neonufft/config.h"
+//---
 
 #include "neonufft/enums.h"
 #include "neonufft/plan.hpp"
 #include "neonufft/types.hpp"
-#include "util/math.hpp"
+#include "neonufft/util/math.hpp"
 #include "gtest/gtest.h"
 
 using namespace neonufft;
