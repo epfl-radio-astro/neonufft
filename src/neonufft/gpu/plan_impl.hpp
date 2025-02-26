@@ -25,7 +25,7 @@
 #include "neonufft/memory/view.hpp"
 #include "neonufft/plan.hpp"
 #include "neonufft/types.hpp"
-#include "neonufft/util/fft_grid.hpp"
+#include "neonufft/gpu//util/fft_grid.hpp"
 #include "neonufft/util/point.hpp"
 #include "neonufft/util/spread_padding.hpp"
 
