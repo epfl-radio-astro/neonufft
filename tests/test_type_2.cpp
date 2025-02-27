@@ -194,8 +194,15 @@ void compare_t2(bool use_gpu, int sign, double upsampfac, double tol,
    gpu::DeviceArray<gpu::ComplexType<T>, 1> input_device(input.size(), device_alloc);
    gpu::DeviceArray<gpu::ComplexType<T>, 1> output_device(output.size(), device_alloc);
    gpu::memcopy(ConstHostView<std::complex<T>,1>(input.data(), input.size(), 1), input_device, nullptr);
+   gpu::DeviceArray<T, 2> out_points_device({num_nu, DIM}, device_alloc);
+   decltype(out_points) out_points_device_pointer;
+   for(IntType dim = 0; dim < DIM; ++dim) {
+     gpu::memcopy(ConstHostView<T, 1>(out_points[dim], num_nu, 1),
+                  out_points_device.slice_view(dim), nullptr);
+     out_points_device_pointer[dim] = out_points_device.slice_view(dim).data();
+   }
 
-   gpu::Plan<T, DIM> plan(opt, sign, num_nu, out_points, modes, nullptr);
+   gpu::Plan<T, DIM> plan(opt, sign, num_nu, out_points_device_pointer, modes, nullptr);
    plan.transform_type_2(input_device.data(), strides, output_device.data());
 
    gpu::memcopy(output_device, HostView<std::complex<T>, 1>(output.data(), output.size(), 1),

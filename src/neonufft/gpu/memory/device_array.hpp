@@ -30,7 +30,7 @@ public:
 
   using ValueType = T;
   using IndexType = IndexArray<DIM>;
-  using SliceType = DeviceArray<T, DIM - 1>;
+  using SliceType = DeviceView<T, DIM - 1>;
 
   static inline constexpr IntType dimension = DIM;
 

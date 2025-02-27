@@ -14,6 +14,7 @@
 #include "neonufft/gpu/device_allocator.hpp"
 #include "neonufft/gpu/kernels/interpolation_kernel.hpp"
 #include "neonufft/gpu/kernels/upsample_kernel.hpp"
+#include "neonufft/gpu/kernels/rescale_loc_kernel.hpp"
 #include "neonufft/gpu/memory/copy.hpp"
 #include "neonufft/gpu/memory/device_array.hpp"
 #include "neonufft/gpu/plan.hpp"
@@ -25,6 +26,7 @@
 #include "neonufft/memory/view.hpp"
 #include "neonufft/plan.hpp"
 #include "neonufft/types.hpp"
+#include "neonufft/gpu/util/partition_group.hpp"
 #include "neonufft/gpu//util/fft_grid.hpp"
 #include "neonufft/util/point.hpp"
 #include "neonufft/util/spread_padding.hpp"
@@ -156,26 +158,33 @@ public:
       }
       // make sure copies are done before correction_factors_host is destroyed
       api::stream_synchronize(stream_);
+
+      typename decltype(partition_)::IndexType part_grid_size;
+      for (std::size_t d = 0; d < DIM; ++d) {
+        part_grid_size[d] =
+            (fft_grid_.padded_view().shape(d) + gpu::PartitionGroup::width - 1) / PartitionGroup::width;
+      }
+      partition_.reset(part_grid_size, device_alloc_);
     }
 
     modes_ = modes;
   }
 
   void set_nu_points(IntType num_nu, std::array<const T*, DIM> loc) {
-    std::array<HostArray<T, 1>, DIM> loc_host;
-    for (std::size_t d = 0; d < DIM; ++d) {
-      loc_host[d].reset(num_nu);
-      gpu::memcopy(ConstView<T, 1>(loc[d], num_nu, 1), loc_host[d], stream_);
+    std::array<ConstDeviceView<T, 1>, DIM> loc_views;
+    std::array<IntType, DIM> padding;
+    for (IntType dim = 0; dim < DIM; ++dim) {
+      loc_views[dim] = ConstDeviceView<T, 1>(loc[dim], num_nu, 1);
+      padding[dim] = spread_padding(kernel_param_.n_spread);
     }
-    api::stream_synchronize(stream_);
 
-    HostArray<Point<T, DIM>, 1> nu_loc_host(num_nu);
     if (nu_loc_.shape(0) != num_nu) {
       nu_loc_.reset(num_nu, device_alloc_);
     }
 
-    rescale_loc<T, DIM>(num_nu, loc, nu_loc_host.data());
-    gpu::memcopy(nu_loc_host, nu_loc_, stream_);
+    rescale_and_permut<T, DIM>(device_prop_, stream_, loc_views, padding, fft_grid_.shape(),
+                               partition_, nu_loc_);
+
     api::stream_synchronize(stream_);
   }
 
@@ -185,6 +194,7 @@ private:
   api::StreamType stream_;
   std::array<IntType, DIM> modes_;
   DeviceArray<Point<T, DIM>, 1> nu_loc_;
+  DeviceArray<PartitionGroup, DIM> partition_;
   std::vector<PartitionGroup> nu_partition_;
   std::array<DeviceArray<T, 1>, DIM> correction_factors_;
   KernelParameters<T> kernel_param_;

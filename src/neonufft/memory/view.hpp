@@ -55,6 +55,10 @@ struct IndexArray<1> {
 
   NEONUFFT_H_FUNC IndexArray(std::array<IntType, 1> idx) noexcept : values{idx[0]} {}
 
+  NEONUFFT_H_FUNC operator std::array<IntType, 1>() const {
+    return std::array<IntType, 1>{values[0]};
+  };
+
   NEONUFFT_H_D_FUNC inline auto operator[](const IntType& index) const noexcept -> const IntType& {
     assert(index < 1);
     return values[index];
@@ -91,6 +95,10 @@ struct IndexArray<2> {
   NEONUFFT_H_D_FUNC IndexArray(IntType idx0, IntType idx1) noexcept : values{idx0, idx1} {}
 
   NEONUFFT_H_FUNC IndexArray(std::array<IntType, DIM> idx) noexcept : values{idx[0], idx[1]} {}
+
+  NEONUFFT_H_FUNC operator std::array<IntType, 2>() const {
+    return std::array<IntType, 2>{values[0], values[1]};
+  };
 
   NEONUFFT_H_D_FUNC inline auto operator[](const IntType& index) const noexcept -> const IntType& {
     assert(index < DIM);
@@ -133,6 +141,10 @@ struct IndexArray<3> {
 
   NEONUFFT_H_FUNC IndexArray(std::array<IntType, DIM> idx) noexcept
       : values{idx[0], idx[1], idx[2]} {}
+
+  NEONUFFT_H_FUNC operator std::array<IntType, 3>() const {
+    return std::array<IntType, 3>{values[0], values[1], values[2]};
+  };
 
   NEONUFFT_H_D_FUNC inline auto operator[](const IntType& index) const noexcept -> const IntType& {
     assert(index < DIM);

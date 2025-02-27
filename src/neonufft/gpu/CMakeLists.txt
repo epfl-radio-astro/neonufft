@@ -4,6 +4,7 @@ set(NEONUFFT_SOURCE_FILES
 	util/fft_grid.cpp
 	kernels/upsample_kernel.cu
 	kernels/interpolation_kernel.cu
+	kernels/rescale_loc_kernel.cu
 	)
 
 
@@ -18,6 +19,8 @@ target_link_libraries(neonufft_gpu_objects PRIVATE ${NEONUFFT_GPU_EXTERNAL_LIBS}
 target_link_libraries(neonufft_gpu_objects PUBLIC ${NEONUFFT_GPU_EXTERNAL_LIBS_PUBLIC})
 target_include_directories(neonufft_gpu_objects INTERFACE $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>  $<BUILD_INTERFACE:${PROJECT_BINARY_DIR}>)
 set_target_properties(neonufft_gpu_objects PROPERTIES VISIBILITY_INLINES_HIDDEN TRUE CXX_VISIBILITY_PRESET hidden)
+set_property(TARGET neonufft_gpu_objects PROPERTY CUDA_RESOLVE_DEVICE_SYMBOLS OFF)
+set_property(TARGET neonufft_gpu_objects PROPERTY CUDA_SEPARABLE_COMPILATION OFF)
 
 
 #shared library
@@ -25,6 +28,8 @@ add_library(neonufft_gpu $<TARGET_OBJECTS:neonufft_gpu_objects>)
 
 set_property(TARGET neonufft_gpu PROPERTY VERSION ${NEONUFFT_VERSION})
 set_property(TARGET neonufft_gpu PROPERTY SOVERSION ${NEONUFFT_SO_VERSION})
+set_property(TARGET neonufft_gpu PROPERTY CUDA_RESOLVE_DEVICE_SYMBOLS OFF)
+set_property(TARGET neonufft_gpu PROPERTY CUDA_SEPARABLE_COMPILATION OFF)
 
 target_link_libraries(neonufft_gpu PRIVATE ${NEONUFFT_GPU_EXTERNAL_LIBS})
 target_link_libraries(neonufft_gpu PUBLIC ${NEONUFFT_GPU_EXTERNAL_LIBS_PUBLIC} neonufft::neonufft)
