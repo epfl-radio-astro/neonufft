@@ -167,7 +167,7 @@ HWY_ATTR void downsample_3d_kernel(NeonufftModeOrder order,
                             out.slice_view(idx_out_non_negative));
   }
 
-  const IntType offset_negative = n_large[1] - n_negative;
+  const IntType offset_negative = n_large[2] - n_negative;
 
   for (IntType i = 0; i < n_negative; ++i, ++idx_out_negative) {
     downsample_2d_kernel<T>(
