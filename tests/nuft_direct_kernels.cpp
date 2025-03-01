@@ -223,6 +223,89 @@ HWY_ATTR void type_1_d3(int sign, std::array<IntType, 3> modes, const std::compl
   }
 }
 
+template <typename T, IntType DIM>
+HWY_ATTR void type_3(int sign, IntType num_in, std::array<const T*, DIM> in_points,
+                     const std::complex<T>* in, IntType num_out,
+                     std::array<const T*, DIM> out_points, std::complex<T>* out) {
+  const ::neonufft::HWY_NAMESPACE::TagType<T> d;
+  constexpr IntType n_lanes = hn::Lanes(d);
+  const T* in_scalar = reinterpret_cast<const T*>(in);
+
+  auto v_sign = hn::Set(d, sign);
+
+  for (IntType idx_out = 0; idx_out < num_out; ++idx_out) {
+    auto v_sum_real = hn::Zero(d);
+    auto v_sum_imag = hn::Zero(d);
+
+    auto v_point_out_x = hn::Set(d, out_points[0][idx_out]);
+    auto v_point_out_y = hn::Undefined(d);
+    auto v_point_out_z = hn::Undefined(d);
+    if constexpr (DIM > 1) {
+      v_point_out_y = hn::Set(d, out_points[1][idx_out]);
+    }
+    if constexpr (DIM > 2) {
+      v_point_out_z = hn::Set(d, out_points[2][idx_out]);
+    }
+
+    IntType idx_in = 0;
+    for (; idx_in + n_lanes <= num_in; idx_in += n_lanes) {
+      auto v_in_1 = hn::LoadU(d, in_scalar + 2 * idx_in);
+      auto v_in_2 = hn::LoadU(d, in_scalar + 2 * idx_in + n_lanes);
+
+      auto v_in_real = hn::ConcatEven(d, v_in_2, v_in_1);
+      auto v_in_imag = hn::ConcatOdd(d, v_in_2, v_in_1);
+
+      auto v_dot =
+          hn::Mul(hn::LoadU(d, in_points[0] + idx_in), v_point_out_x);
+      if constexpr (DIM > 1) {
+        v_dot = hn::Add(v_dot, hn::Mul(hn::LoadU(d, in_points[1] + idx_in), v_point_out_y));
+      }
+      if constexpr (DIM > 2) {
+        v_dot = hn::Add(v_dot, hn::Mul(hn::LoadU(d, in_points[2] + idx_in), v_point_out_z));
+      }
+
+      v_dot = hn::Mul(v_dot, v_sign);
+
+      auto v_sin = hn::Undefined(d);
+      auto v_cos = hn::Undefined(d);
+
+      hn::SinCos(d, v_dot, v_sin, v_cos);
+
+      // complex multiplication
+      auto res_real = hn::Sub(hn::Mul(v_in_real, v_cos), hn::Mul(v_in_imag, v_sin));
+      auto res_imag = hn::Add(hn::Mul(v_in_real, v_sin), hn::Mul(v_in_imag, v_cos));
+
+      v_sum_real = hn::Add(v_sum_real, res_real);
+      v_sum_imag = hn::Add(v_sum_imag, res_imag);
+    }
+
+    std::complex<T> sum{hn::ReduceSum(d, v_sum_real), hn::ReduceSum(d, v_sum_imag)};
+
+    for (; idx_in < num_in; ++idx_in) {
+      T dot = in_points[0][idx_in] * out_points[0][idx_out];
+      for (IntType dim = 1; dim < DIM; ++dim) {
+        dot += in_points[dim][idx_in] * out_points[dim][idx_out];
+      }
+      sum += in[idx_in] * std::exp(std::complex<T>{0, sign * dot});
+    }
+    out[idx_out] = sum;
+  }
+}
+
+template <IntType DIM>
+HWY_ATTR void type_3_float(int sign, IntType num_in, std::array<const float*, DIM> in_points,
+                     const std::complex<float>* in, IntType num_out,
+                     std::array<const float*, DIM> out_points, std::complex<float>* out) {
+  type_3<float, DIM>(sign, num_in, in_points, in, num_out, out_points, out);
+}
+
+template <IntType DIM>
+HWY_ATTR void type_3_double(int sign, IntType num_in, std::array<const double*, DIM> in_points,
+                     const std::complex<double>* in, IntType num_out,
+                     std::array<const double*, DIM> out_points, std::complex<double>* out) {
+  type_3<double, DIM>(sign, num_in, in_points, in, num_out, out_points, out);
+}
+
 }  // namespace HWY_NAMESPACE
 }  // namespace
 
@@ -257,6 +340,19 @@ void nuft_direct_t1(int sign, std::array<IntType, DIM> modes, const std::complex
   } else {
     NEONUFFT_EXPORT_AND_DISPATCH_T(type_1_d3<T>)
     (sign, modes, in, num_in, in_points, out, strides);
+  }
+}
+
+template <typename T, IntType DIM>
+void nuft_direct_t3(int sign, IntType num_in, std::array<const T*, DIM> in_points,
+                    const std::complex<T>* in, IntType num_out,
+                    std::array<const T*, DIM> out_points, std::complex<T>* out) {
+  if constexpr (std::is_same_v<float, T>) {
+    NEONUFFT_EXPORT_AND_DISPATCH_T(type_3_float<DIM>)
+    (sign, num_in, in_points, in, num_out, out_points, out);
+  } else {
+    NEONUFFT_EXPORT_AND_DISPATCH_T(type_3_double<DIM>)
+    (sign, num_in, in_points, in, num_out, out_points, out);
   }
 }
 
@@ -320,6 +416,41 @@ template void nuft_direct_t1<double, 3>(int sign, std::array<IntType, 3> modes,
                                        std::array<const double*, 3> in_points,
                                        std::complex<double>* out, std::array<IntType, 3> strides);
 
+template void nuft_direct_t3<float, 1>(int sign, IntType num_in,
+                                       std::array<const float*, 1> in_points,
+                                       const std::complex<float>* in, IntType num_out,
+                                       std::array<const float*, 1> out_points,
+                                       std::complex<float>* out);
+
+template void nuft_direct_t3<float, 2>(int sign, IntType num_in,
+                                       std::array<const float*, 2> in_points,
+                                       const std::complex<float>* in, IntType num_out,
+                                       std::array<const float*, 2> out_points,
+                                       std::complex<float>* out);
+
+template void nuft_direct_t3<float, 3>(int sign, IntType num_in,
+                                       std::array<const float*, 3> in_points,
+                                       const std::complex<float>* in, IntType num_out,
+                                       std::array<const float*, 3> out_points,
+                                       std::complex<float>* out);
+
+template void nuft_direct_t3<double, 1>(int sign, IntType num_in,
+                                       std::array<const double*, 1> in_points,
+                                       const std::complex<double>* in, IntType num_out,
+                                       std::array<const double*, 1> out_points,
+                                       std::complex<double>* out);
+
+template void nuft_direct_t3<double, 2>(int sign, IntType num_in,
+                                       std::array<const double*, 2> in_points,
+                                       const std::complex<double>* in, IntType num_out,
+                                       std::array<const double*, 2> out_points,
+                                       std::complex<double>* out);
+
+template void nuft_direct_t3<double, 3>(int sign, IntType num_in,
+                                       std::array<const double*, 3> in_points,
+                                       const std::complex<double>* in, IntType num_out,
+                                       std::array<const double*, 3> out_points,
+                                       std::complex<double>* out);
 #endif
 
 }  // namespace test
