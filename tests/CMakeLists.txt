@@ -19,9 +19,9 @@ add_executable(run_tests
   run_tests.cpp
   test_prephase.cpp
   test_postphase.cpp
-  test_type_1.cpp
-  test_type_2.cpp
+  test_type_1_2.cpp
   test_type_3.cpp
+  nuft_direct_kernels.cpp
 )
 target_link_libraries(run_tests PRIVATE gtest $<TARGET_OBJECTS:neonufft_objects> $<TARGET_OBJECTS:neonufft_contrib_objects> ${NEONUFFT_EXTERNAL_LIBS} ${NEONUFFT_EXTERNAL_LIBS_PUBLIC})
 target_include_directories(run_tests PRIVATE ${NEONUFFT_INCLUDE_DIRS})

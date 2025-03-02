@@ -9,11 +9,12 @@
 #include "neonufft/config.h"
 //---
 
+#include "gtest/gtest.h"
 #include "neonufft/enums.h"
 #include "neonufft/plan.hpp"
 #include "neonufft/types.hpp"
 #include "neonufft/util/math.hpp"
-#include "gtest/gtest.h"
+#include "nuft_direct_kernels.hpp"
 
 using namespace neonufft;
 
@@ -53,27 +54,6 @@ std::vector<std::complex<T>> rand_vec_cpx(GEN &&rand_gen, IntType num, T min, T 
   return vec;
 }
 
-namespace ref {
-template <typename T, IntType DIM>
-void transform_t3(int sign, IntType num_in,
-                  std::array<const T *, DIM> in_points,
-                  const std::complex<T> *in, IntType num_out,
-                  std::array<const T *, DIM> out_points, std::complex<T> *out) {
-
-  for (IntType idx_out = 0; idx_out < num_out; ++idx_out) {
-    std::complex<T> sum = {0, 0};
-    for (IntType idx_in = 0; idx_in < num_in; ++idx_in) {
-      T dot = in_points[0][idx_in] * out_points[0][idx_out];
-      for (IntType dim = 1; dim < DIM; ++dim) {
-        dot += in_points[dim][idx_in] * out_points[dim][idx_out];
-      }
-      sum += in[idx_in] * std::exp(std::complex<T>{0, sign * dot});
-    }
-    out[idx_out] = sum;
-  }
-}
-} // namespace ref
-
 template <typename T>
 void compare_t3(int sign, double upsampfac, double tol, IntType num_in,
                 const T *in_points_x, const T *in_points_y,
@@ -98,8 +78,10 @@ void compare_t3(int sign, double upsampfac, double tol, IntType num_in,
     plan.add_input(input.data());
     plan.transform(output.data());
 
-    ref::transform_t3<T, 1>(sign, num_in, {in_points_x}, input.data(),
-                            num_out, {out_points_x}, output_ref.data());
+    // ref::transform_t3<T, 1>(sign, num_in, {in_points_x}, input.data(),
+    //                         num_out, {out_points_x}, output_ref.data());
+    test::nuft_direct_t3<T, 1>(sign, num_in, {in_points_x}, input.data(), num_out, {out_points_x},
+                               output_ref.data());
 
   } else if (!in_points_z) {
     // DIM == 2
@@ -109,9 +91,8 @@ void compare_t3(int sign, double upsampfac, double tol, IntType num_in,
     plan.add_input(input.data());
     plan.transform(output.data());
 
-    ref::transform_t3<T, 2>(sign, num_in, {in_points_x, in_points_y},
-                            input.data(), num_out,
-                            {out_points_x, out_points_y}, output_ref.data());
+    test::nuft_direct_t3<T, 2>(sign, num_in, {in_points_x, in_points_y}, input.data(), num_out,
+                               {out_points_x, out_points_y}, output_ref.data());
   } else {
     // DIM == 3
 
@@ -121,10 +102,9 @@ void compare_t3(int sign, double upsampfac, double tol, IntType num_in,
     plan.add_input(input.data());
     plan.transform(output.data());
 
-    ref::transform_t3<T, 3>(
-        sign, num_in, {in_points_x, in_points_y, in_points_z},
-        input.data(), num_out, {out_points_x, out_points_y, out_points_z},
-        output_ref.data());
+    test::nuft_direct_t3<T, 3>(sign, num_in, {in_points_x, in_points_y, in_points_z}, input.data(),
+                               num_out, {out_points_x, out_points_y, out_points_z},
+                               output_ref.data());
   }
 
   IntType count_below_tol = 0;
