@@ -18,6 +18,7 @@
 #include "neonufft/types.hpp"
 #include "neonufft/allocator.hpp"
 #include "neonufft/util/math.hpp"
+#include "test_thread_pool.hpp"
 #include "gtest/gtest.h"
 #include "nuft_direct_kernels.hpp"
 
@@ -172,9 +173,19 @@ void test_transform(int type, bool use_gpu, int sign, double upsampfac, double t
   }
 
   if (type == 2) {
-    test::nuft_direct_t2<T, DIM>(sign, modes, input.data(), num_nu, points, ref_output.data(),
-                                 strides);
+    // nu output
+    test::thread_pool.parallel_for({0, IntType(num_nu)}, 1, [&](IntType, BlockRange range) {
+      // split output points among threads
+      auto local_points = points;
+      for (IntType dim = 0; dim < DIM; ++dim) {
+        local_points[dim] += range.begin;
+      }
+      test::nuft_direct_t2<T, DIM>(sign, modes, input.data(), range.end - range.begin, local_points,
+                                   ref_output.data() + range.begin, strides);
+    });
+
   } else {
+    // mode grid output
     test::nuft_direct_t1<T, DIM>(sign, modes, input.data(), num_nu, points, ref_output.data(),
                                  strides);
   }
