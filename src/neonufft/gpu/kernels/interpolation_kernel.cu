@@ -3,46 +3,18 @@
 #include <algorithm>
 
 #include "neonufft/es_kernel_param.hpp"
+#include "neonufft/gpu/kernels/es_kernel_eval.cuh"
 #include "neonufft/gpu/kernels/interpolation_kernel.hpp"
 #include "neonufft/gpu/memory/device_view.hpp"
+#include "neonufft/gpu/types.hpp"
 #include "neonufft/gpu/util/cub_api.hpp"
 #include "neonufft/gpu/util/kernel_launch_grid.hpp"
 #include "neonufft/gpu/util/runtime.hpp"
 #include "neonufft/gpu/util/runtime_api.hpp"
-#include "neonufft/gpu/types.hpp"
 #include "neonufft/util/point.hpp"
 
 namespace neonufft {
 namespace gpu {
-
-template <typename T, int N_SPREAD>
-struct EsKernelDirect;
-
-template <int N_SPREAD>
-struct EsKernelDirect<float, N_SPREAD> {
-  __device__ __forceinline__ float eval_scalar(float x) const {
-    constexpr float es_c = 4.f / float(N_SPREAD * N_SPREAD);
-    const float arg = 1.f - es_c * x * x;
-    if (arg <= 0) return 0.0;
-
-    return expf(es_beta * (sqrtf(arg) - 1.f));
-  }
-
-  float es_beta;
-};
-
-template <int N_SPREAD>
-struct EsKernelDirect<double, N_SPREAD> {
-  __device__ __forceinline__ double eval_scalar(double x) const {
-    constexpr float es_c = 4.0 / double(N_SPREAD * N_SPREAD);
-    const double arg = 1.0 - es_c * x * x;
-    if (arg <= 0) return 0.0;
-
-    return exp(es_beta * (sqrt(arg) - 1.0));
-  }
-
-  double es_beta;
-};
 
 template <typename KER, typename T, int N_SPREAD, int BLOCK_SIZE>
 __global__ static void __launch_bounds__(BLOCK_SIZE)
@@ -50,7 +22,7 @@ __global__ static void __launch_bounds__(BLOCK_SIZE)
                             ConstDeviceView<ComplexType<T>, 1> grid,
                             DeviceView<ComplexType<T>, 1> out) {
   const IntType block_step = gridDim.x * BLOCK_SIZE;
-  const T half_width = T(N_SPREAD) / T(2);  // half spread width
+  constexpr T half_width = T(N_SPREAD) / T(2);  // half spread width
 
   for (IntType idx = threadIdx.x + blockIdx.x * BLOCK_SIZE; idx < points.shape(0);
        idx += block_step) {
@@ -126,7 +98,7 @@ __global__ static void __launch_bounds__(BLOCK_SIZE)
   T* ker_x = ker;
   T* ker_y = ker + N_SPREAD;
 
-  const T half_width = T(N_SPREAD) / T(2);  // half spread width
+  constexpr T half_width = T(N_SPREAD) / T(2);  // half spread width
 
   // iterate over points, such that close points are processed by close warps. Helps with caching if
   // points are spatially sorted.
@@ -230,7 +202,7 @@ __global__ static void __launch_bounds__(BLOCK_SIZE)
   T* ker_y = ker + N_SPREAD;
   T* ker_z = ker + 2 * N_SPREAD;
 
-  const T half_width = T(N_SPREAD) / T(2);  // half spread width
+  constexpr T half_width = T(N_SPREAD) / T(2);  // half spread width
 
   // iterate over points, such that close points are processed by close warps. Helps with caching if
   // points are spatially sorted.

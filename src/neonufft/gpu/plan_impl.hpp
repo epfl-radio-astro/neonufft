@@ -15,6 +15,7 @@
 #include "neonufft/gpu/kernels/interpolation_kernel.hpp"
 #include "neonufft/gpu/kernels/upsample_kernel.hpp"
 #include "neonufft/gpu/kernels/rescale_loc_kernel.hpp"
+#include "neonufft/gpu/kernels/downsample_kernel.hpp"
 #include "neonufft/gpu/memory/copy.hpp"
 #include "neonufft/gpu/memory/device_array.hpp"
 #include "neonufft/gpu/plan.hpp"
@@ -22,6 +23,9 @@
 #include "neonufft/kernels/interpolation_kernel.hpp"
 #include "neonufft/kernels/rescale_loc_kernel.hpp"
 #include "neonufft/kernels/upsample_kernel.hpp"
+#include "neonufft/kernels/downsample_kernel.hpp"
+#include "neonufft/kernels/spreading_kernel.hpp"
+#include "neonufft/gpu/kernels/spreading_kernel.hpp"
 #include "neonufft/memory/array.hpp"
 #include "neonufft/memory/view.hpp"
 #include "neonufft/plan.hpp"
@@ -60,7 +64,40 @@ public:
 
   void transform_type_1(const ComplexType<T>* in, ComplexType<T>* out,
                         std::array<IntType, DIM> out_strides) {
-    throw NotImplementedError();
+    fft_grid_.padded_view().zero(stream_);
+
+    ConstDeviceView<ComplexType<T>, 1> in_view(in, nu_loc_.shape(0), 1);
+
+    //TODO: spread
+    gpu::spread<T, DIM>(device_prop_, stream_, kernel_param_, partition_, nu_loc_, in_view,
+                        ConstDeviceView<ComplexType<T>, 1>(), fft_grid_.shape(),
+                        fft_grid_.padded_view());
+
+    // {
+    //   HostArray<ComplexType<T>, DIM> tmp(fft_grid_.padded_view().shape());
+    //   memcopy(fft_grid_.padded_view(), tmp, stream_);
+    //   api::device_synchronize();
+    //   api::device_synchronize();
+    // }
+
+    fft_grid_.transform();
+
+    std::array<ConstDeviceView<T, 1>, DIM> correction_factor_views;
+    for (IntType dim = 0; dim < DIM; ++dim) {
+      correction_factor_views[dim] = correction_factors_[dim].view();
+    }
+
+    DeviceView<ComplexType<T>, DIM> out_view(out, modes_, out_strides);
+
+    gpu::downsample<T, DIM>(device_prop_, stream_, opt_.order, fft_grid_.view(),
+                            correction_factor_views, out_view);
+
+    // {
+    //   HostArray<ComplexType<T>, DIM> tmp(out_view.shape());
+    //   memcopy(out_view, tmp, stream_);
+    //   api::device_synchronize();
+    //   api::device_synchronize();
+    // }
   }
 
   void transform_type_2(const ComplexType<T>* in, std::array<IntType, DIM> in_strides,
@@ -72,8 +109,7 @@ public:
       correction_factor_views[dim] = correction_factors_[dim].view();
     }
 
-    ConstDeviceView<ComplexType<T>, DIM> in_view;
-    in_view = ConstDeviceView<ComplexType<T>, DIM>(in, modes_, in_strides);
+    ConstDeviceView<ComplexType<T>, DIM> in_view(in, modes_, in_strides);
 
     gpu::upsample<T, DIM>(device_prop_, stream_, opt_.order, in_view, correction_factor_views,
                           fft_grid_.view());
@@ -161,8 +197,8 @@ public:
 
       typename decltype(partition_)::IndexType part_grid_size;
       for (std::size_t d = 0; d < DIM; ++d) {
-        part_grid_size[d] =
-            (fft_grid_.padded_view().shape(d) + gpu::PartitionGroup::width - 1) / PartitionGroup::width;
+        part_grid_size[d] = (fft_grid_.padded_view().shape(d) + gpu::PartitionGroup::width - 1) /
+                            PartitionGroup::width;
       }
       partition_.reset(part_grid_size, device_alloc_);
     }
@@ -182,8 +218,8 @@ public:
       nu_loc_.reset(num_nu, device_alloc_);
     }
 
-    rescale_and_permut<T, DIM>(device_prop_, stream_, loc_views, padding, fft_grid_.shape(),
-                               partition_, nu_loc_);
+    rescale_and_permut<T, DIM>(device_prop_, stream_, loc_views, padding,
+                               fft_grid_.padded_view().shape(), partition_, nu_loc_);
 
     api::stream_synchronize(stream_);
   }

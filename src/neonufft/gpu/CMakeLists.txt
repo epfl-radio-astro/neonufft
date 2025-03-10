@@ -5,6 +5,8 @@ set(NEONUFFT_SOURCE_FILES
 	kernels/upsample_kernel.cu
 	kernels/interpolation_kernel.cu
 	kernels/rescale_loc_kernel.cu
+	kernels/spreading_kernel.cu
+	kernels/downsample_kernel.cu
 	)
 
 
