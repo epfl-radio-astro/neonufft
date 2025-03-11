@@ -60,6 +60,13 @@ template <typename T, IntType NSPREAD> struct EsKernelDirect {
       hn::Store(hn::Exp(d, exp_arg), d, ker + idx_ker);
       x = hn::Add(x, inc);
     }
+
+    constexpr IntType tail = N_SPREAD % n_lanes;
+    if constexpr (tail) {
+      for (IntType segment = N_SPREAD; segment < N_SPREAD + (n_lanes - tail); ++segment) {
+        ker[segment] = 0;
+      }
+    }
   }
 
   // Evaluate kernel at N_SPREAD points starting from x_init in [-w/2, -w/2 + 1]
@@ -87,6 +94,14 @@ template <typename T, IntType NSPREAD> struct EsKernelDirect {
       hn::Store(res_high, d, ker + 2 * idx_ker + n_lanes);
 
       x = hn::Add(x, inc);
+    }
+
+    constexpr IntType tail = N_SPREAD % n_lanes;
+    if constexpr (tail) {
+      for (IntType segment = N_SPREAD; segment < N_SPREAD + (n_lanes - tail); ++segment) {
+        ker[2 * segment] = 0;
+        ker[2 * segment + 1] = 0;
+      }
     }
   }
 
@@ -153,6 +168,13 @@ template <typename T, typename COEFFS> struct EsKernelHorner {
       }
       hn::Store(v_ker_1, d, ker + segment);
     }
+
+    constexpr IntType tail = N_SPREAD % n_lanes;
+    if constexpr (tail) {
+      for (IntType segment = N_SPREAD; segment < N_SPREAD + (n_lanes - tail); ++segment) {
+        ker[segment] = 0;
+      }
+    }
   }
 
   // Evaluate kernel at N_SPREAD points starting from x_init in [-w/2, -w/2 + 1]
@@ -182,6 +204,14 @@ template <typename T, typename COEFFS> struct EsKernelHorner {
 
       hn::Store(v_ker_1_low, d, ker + 2 * segment);
       hn::Store(v_ker_1_high, d, ker + 2 * segment + n_lanes);
+    }
+
+    constexpr IntType tail = N_SPREAD % n_lanes;
+    if constexpr (tail) {
+      for (IntType segment = N_SPREAD; segment < N_SPREAD + (n_lanes - tail); ++segment) {
+        ker[2 * segment] = 0;
+        ker[2 * segment + 1] = 0;
+      }
     }
   }
 
