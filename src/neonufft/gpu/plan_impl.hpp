@@ -218,8 +218,8 @@ public:
       nu_loc_.reset(num_nu, device_alloc_);
     }
 
-    rescale_and_permut<T, DIM>(device_prop_, stream_, loc_views, padding,
-                               fft_grid_.padded_view().shape(), partition_, nu_loc_);
+    rescale_and_permut<T, DIM>(device_prop_, stream_, loc_views, padding, fft_grid_.view().shape(),
+                               partition_, nu_loc_);
 
     api::stream_synchronize(stream_);
   }
