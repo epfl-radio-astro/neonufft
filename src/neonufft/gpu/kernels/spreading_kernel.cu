@@ -74,7 +74,7 @@ __global__ static void __launch_bounds__(BLOCK_SIZE)
     const IntType thread_grid_idx_x = threadIdx.x + idx_block_part_x * PartitionGroup::width;
 
     for (IntType idx_part_x = idx_block_part_x > 0 ? idx_block_part_x - 1 : 0;
-         idx_part_x < min(partition.shape(0), idx_block_part_x + 1); ++idx_part_x) {
+         idx_part_x <= idx_block_part_x + 1 && idx_part_x < partition.shape(0); ++idx_part_x) {
       const auto part = partition[idx_part_x];
       if (part.size) {
         spread_partition_group_1d<KER, T, N_SPREAD, BLOCK_SIZE>(
