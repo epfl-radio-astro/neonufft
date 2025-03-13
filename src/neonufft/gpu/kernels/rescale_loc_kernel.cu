@@ -36,7 +36,7 @@ __global__ static void __launch_bounds__(BLOCK_SIZE)
     }
 
     IntType idx_part = (IntType(l * grid_size) + offset) / PartitionGroup::width;
-    idx_part = min(idx_part, partition.shape(0) - 1);
+    idx_part =  min(idx_part, partition.shape(0) - 1);
     atomicAdd(&(partition[idx_part].size), 1);
   }
 }
@@ -61,8 +61,11 @@ __global__ static void __launch_bounds__(BLOCK_SIZE)
       l_y = l_y - floor(l_y);
     }
 
-    const IntType idx_part_x = (IntType(l_x * grid_size_x) + offset_x) / PartitionGroup::width;
-    const IntType idx_part_y = (IntType(l_y * grid_size_y) + offset_y) / PartitionGroup::width;
+    IntType idx_part_x = (IntType(l_x * grid_size_x) + offset_x) / PartitionGroup::width;
+    IntType idx_part_y = (IntType(l_y * grid_size_y) + offset_y) / PartitionGroup::width;
+    idx_part_x =  min(idx_part_x, partition.shape(0) - 1);
+    idx_part_y =  min(idx_part_y, partition.shape(1) - 1);
+
     atomicAdd(&(partition[{idx_part_x, idx_part_y}].size), 1);
   }
 }
@@ -91,9 +94,14 @@ __global__ static void __launch_bounds__(BLOCK_SIZE)
       l_z = l_z - floor(l_z);
     }
 
-    const IntType idx_part_x = (IntType(l_x * grid_size_x) + offset_x) / PartitionGroup::width;
-    const IntType idx_part_y = (IntType(l_y * grid_size_y) + offset_y) / PartitionGroup::width;
-    const IntType idx_part_z = (IntType(l_z * grid_size_z) + offset_z) / PartitionGroup::width;
+    IntType idx_part_x = (IntType(l_x * grid_size_x) + offset_x) / PartitionGroup::width;
+    IntType idx_part_y = (IntType(l_y * grid_size_y) + offset_y) / PartitionGroup::width;
+    IntType idx_part_z = (IntType(l_z * grid_size_z) + offset_z) / PartitionGroup::width;
+
+    idx_part_x =  min(idx_part_x, partition.shape(0) - 1);
+    idx_part_y =  min(idx_part_y, partition.shape(1) - 1);
+    idx_part_z =  min(idx_part_y, partition.shape(2) - 1);
+
     atomicAdd(&(partition[{idx_part_x, idx_part_y, idx_part_z}].size), 1);
   }
 }
@@ -170,8 +178,10 @@ __global__ static void __launch_bounds__(BLOCK_SIZE)
       l_y = l_y - floor(l_y);
     }
 
-    const IntType idx_part_x = (IntType(l_x * grid_size_x) + offset_x) / PartitionGroup::width;
-    const IntType idx_part_y = (IntType(l_y * grid_size_y) + offset_y) / PartitionGroup::width;
+    IntType idx_part_x = (IntType(l_x * grid_size_x) + offset_x) / PartitionGroup::width;
+    IntType idx_part_y = (IntType(l_y * grid_size_y) + offset_y) / PartitionGroup::width;
+    idx_part_x =  min(idx_part_x, partition.shape(0) - 1);
+    idx_part_y =  min(idx_part_y, partition.shape(1) - 1);
 
     const auto local_offset = atomicAdd(&(partition[{idx_part_x, idx_part_y}].size), 1);
 
@@ -209,9 +219,13 @@ __global__ static void __launch_bounds__(BLOCK_SIZE)
       l_z = l_z - floor(l_z);
     }
 
-    const IntType idx_part_x = (IntType(l_x * grid_size_x) + offset_x) / PartitionGroup::width;
-    const IntType idx_part_y = (IntType(l_y * grid_size_y) + offset_y) / PartitionGroup::width;
-    const IntType idx_part_z = (IntType(l_z * grid_size_z) + offset_z) / PartitionGroup::width;
+    IntType idx_part_x = (IntType(l_x * grid_size_x) + offset_x) / PartitionGroup::width;
+    IntType idx_part_y = (IntType(l_y * grid_size_y) + offset_y) / PartitionGroup::width;
+    IntType idx_part_z = (IntType(l_z * grid_size_z) + offset_z) / PartitionGroup::width;
+
+    idx_part_x =  min(idx_part_x, partition.shape(0) - 1);
+    idx_part_y =  min(idx_part_y, partition.shape(1) - 1);
+    idx_part_z =  min(idx_part_y, partition.shape(2) - 1);
 
     const auto local_offset = atomicAdd(&(partition[{idx_part_x, idx_part_y, idx_part_z}].size), 1);
 
