@@ -35,7 +35,8 @@ __global__ static void __launch_bounds__(BLOCK_SIZE)
       l = l - floor(l);
     }
 
-    const IntType idx_part = (IntType(l * grid_size) + offset) / PartitionGroup::width;
+    IntType idx_part = (IntType(l * grid_size) + offset) / PartitionGroup::width;
+    idx_part = min(idx_part, partition.shape(0) - 1);
     atomicAdd(&(partition[idx_part].size), 1);
   }
 }
@@ -136,7 +137,8 @@ __global__ static void __launch_bounds__(BLOCK_SIZE)
       l = l - floor(l);
     }
 
-    const IntType idx_part = (IntType(l * grid_size) + offset) / PartitionGroup::width;
+    IntType idx_part = (IntType(l * grid_size) + offset) / PartitionGroup::width;
+    idx_part = min(idx_part, partition.shape(0) - 1);
     const auto local_offset = atomicAdd(&(partition[idx_part].size), 1);
 
     Point<T, 1> p;
@@ -238,8 +240,6 @@ auto rescale_and_permut(const api::DevicePropType& prop, const api::StreamType& 
   partition.zero(stream);
 
   if constexpr (DIM == 1) {
-
-
     api::launch_kernel(compute_part_sizes_1d_kernel<T, block_size>, grid, block, 0, stream, loc[0],
                        offset[0], grid_size[0], partition);
 

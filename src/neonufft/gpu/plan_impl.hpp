@@ -173,7 +173,8 @@ public:
       new_grid |= (fft_grid_size[d] != fft_grid_.shape(d));
     }
     if (new_grid) {
-      const auto padding = spread_padding(kernel_param_.n_spread);
+      // const auto padding = spread_padding(kernel_param_.n_spread);
+      const auto padding = 0;
       typename decltype(fft_grid_)::IndexType pad;
       pad.fill(padding);
       fft_grid_ = FFTGrid<T, DIM>(device_alloc_, stream_, fft_grid_size, sign_, pad);

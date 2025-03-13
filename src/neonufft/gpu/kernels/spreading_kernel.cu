@@ -40,7 +40,6 @@ __device__ static void spread_partition_group_1d(
     // offset into padded grid
     idx_init += padding_x;
 
-    // only process point if spread can affect this cell
     if (thread_grid_idx_x >= idx_init && thread_grid_idx_x < idx_init + N_SPREAD) {
       const auto ker_value_x = ker_x[thread_grid_idx_x - idx_init];
       auto in_value = input[point.index];
@@ -73,14 +72,36 @@ __global__ static void __launch_bounds__(BLOCK_SIZE)
     ComplexType<T> sum{0, 0};
     const IntType thread_grid_idx_x = threadIdx.x + idx_block_part_x * PartitionGroup::width;
 
+    // check from left to right +-1
     for (IntType idx_part_x = idx_block_part_x > 0 ? idx_block_part_x - 1 : 0;
          idx_part_x <= idx_block_part_x + 1 && idx_part_x < partition.shape(0); ++idx_part_x) {
       const auto part = partition[idx_part_x];
-      if (part.size) {
+      spread_partition_group_1d<KER, T, N_SPREAD, BLOCK_SIZE>(
+          kernel, thread_grid_idx_x, points.sub_view(part.begin, part.size), input,
+          prephase_optional, grid_size_x, padding_x, ker_x, sum);
+    }
+
+    // periodic wrap around with shifted grid index. We check the two last partition cells, because
+    // the the last one might not be fully filled up and points in the second last may still be
+    // within N_SPREAD distance.
+    if (idx_block_part_x == 0) {
+      auto part = partition[partition.shape(0) - 1];
+      spread_partition_group_1d<KER, T, N_SPREAD, BLOCK_SIZE>(
+          kernel, thread_grid_idx_x + grid_size_x, points.sub_view(part.begin, part.size), input,
+          prephase_optional, grid_size_x, padding_x, ker_x, sum);
+      if (partition.shape(0) > 1) {
+        part = partition[partition.shape(0) - 2];
         spread_partition_group_1d<KER, T, N_SPREAD, BLOCK_SIZE>(
-            kernel, thread_grid_idx_x, points.sub_view(part.begin, part.size), input,
+            kernel, thread_grid_idx_x + grid_size_x, points.sub_view(part.begin, part.size), input,
             prephase_optional, grid_size_x, padding_x, ker_x, sum);
       }
+    }
+
+    if (idx_block_part_x >= partition.shape(0) - 2) {
+      auto part = partition[0];
+      spread_partition_group_1d<KER, T, N_SPREAD, BLOCK_SIZE>(
+          kernel, thread_grid_idx_x - grid_size_x, points.sub_view(part.begin, part.size), input,
+          prephase_optional, grid_size_x, padding_x, ker_x, sum);
     }
 
     if (thread_grid_idx_x < padded_grid.shape(0) && (sum.x || sum.y)) {
@@ -116,7 +137,7 @@ auto spread_dispatch(const api::DevicePropType& prop, const api::StreamType& str
   if (param.n_spread == N_SPREAD) {
     EsKernelDirect<T, N_SPREAD> kernel{param.es_beta};
     const dim3 block_dim(std::min<int>(BLOCK_SIZE, prop.maxThreadsDim[0]), 1, 1);
-    const auto grid_dim = kernel_launch_grid(prop, {points.size(), 1, 1}, block_dim);
+    const dim3 grid_dim(std::min<int>(partition.shape(0), prop.maxGridSize[0]), 1, 1);
 
     if constexpr (DIM == 1) {
       api::launch_kernel(spread_1d_kernel<decltype(kernel), T, N_SPREAD, BLOCK_SIZE>, grid_dim,
