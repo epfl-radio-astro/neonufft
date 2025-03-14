@@ -100,7 +100,7 @@ __global__ static void __launch_bounds__(BLOCK_SIZE)
 
     idx_part_x =  min(idx_part_x, partition.shape(0) - 1);
     idx_part_y =  min(idx_part_y, partition.shape(1) - 1);
-    idx_part_z =  min(idx_part_y, partition.shape(2) - 1);
+    idx_part_z =  min(idx_part_z, partition.shape(2) - 1);
 
     atomicAdd(&(partition[{idx_part_x, idx_part_y, idx_part_z}].size), 1);
   }
@@ -225,7 +225,7 @@ __global__ static void __launch_bounds__(BLOCK_SIZE)
 
     idx_part_x =  min(idx_part_x, partition.shape(0) - 1);
     idx_part_y =  min(idx_part_y, partition.shape(1) - 1);
-    idx_part_z =  min(idx_part_y, partition.shape(2) - 1);
+    idx_part_z =  min(idx_part_z, partition.shape(2) - 1);
 
     const auto local_offset = atomicAdd(&(partition[{idx_part_x, idx_part_y, idx_part_z}].size), 1);
 
