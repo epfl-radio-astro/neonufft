@@ -232,10 +232,10 @@ __global__ static void __launch_bounds__(BLOCK_SIZE * BLOCK_SIZE)
 
       if (thread_grid_idx_x < grid.shape(0) && thread_grid_idx_y < grid.shape(1) &&
           (sum.x || sum.y)) {
-        auto value = grid[{thread_grid_idx_x, idx_block_part_y}];
+        auto value = grid[{thread_grid_idx_x, thread_grid_idx_y}];
         value.x += sum.x;
         value.y += sum.y;
-        grid[{thread_grid_idx_x, idx_block_part_y}] = value;
+        grid[{thread_grid_idx_x, thread_grid_idx_y}] = value;
       }
     }
   }
@@ -266,6 +266,7 @@ auto spread_dispatch(const api::DevicePropType& prop, const api::StreamType& str
       const dim3 block_dim(BLOCK_SIZE, BLOCK_SIZE, 1);
       const dim3 grid_dim(std::min<int>(partition.shape(0), prop.maxGridSize[0]),
                           std::min<int>(partition.shape(1), prop.maxGridSize[1]), 1);
+
       api::launch_kernel(spread_2d_kernel<decltype(kernel), T, N_SPREAD, BLOCK_SIZE>, grid_dim,
                          block_dim, 0, stream, kernel, partition, points, input, prephase_optional,
                          grid);
