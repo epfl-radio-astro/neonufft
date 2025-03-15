@@ -174,20 +174,18 @@ HWY_ATTR void spread_dispatch(NeonufftKernelType kernel_type,
 
   if (kernel_param.n_spread == N_SPREAD) {
     if (kernel_type == NEONUFFT_ES_KERNEL) {
-      if(kernel_param.approximation && kernel_param.upsampfac == 2.0) {
+      if (kernel_param.approximation && kernel_param.upsampfac == 2.0) {
         EsKernelHorner200<T, N_SPREAD> kernel(kernel_param);
-        spread_kernel<DIM, decltype(kernel), T>(kernel, num_nu, px, input,
-                                                prephase_optional, grid_size,
-                                                padded_grid);
+        spread_kernel<DIM, decltype(kernel), T>(kernel, num_nu, px, input, prephase_optional,
+                                                grid_size, padded_grid);
       } else if (kernel_param.approximation && kernel_param.upsampfac == 1.25) {
         EsKernelHorner125<T, N_SPREAD> kernel(kernel_param);
-        spread_kernel<DIM, decltype(kernel), T>(kernel, num_nu, px, input,
-                                                prephase_optional, grid_size,
-                                                padded_grid);
+        spread_kernel<DIM, decltype(kernel), T>(kernel, num_nu, px, input, prephase_optional,
+                                                grid_size, padded_grid);
       } else {
-      EsKernelDirect<T, N_SPREAD> kernel(kernel_param);
-      spread_kernel<DIM, decltype(kernel), T>(kernel, num_nu, px, input,
-                                              prephase_optional,grid_size, padded_grid);
+        EsKernelDirect<T, N_SPREAD> kernel(kernel_param);
+        spread_kernel<DIM, decltype(kernel), T>(kernel, num_nu, px, input, prephase_optional,
+                                                grid_size, padded_grid);
       }
     } else {
       throw InternalError("Unknown kernel type");

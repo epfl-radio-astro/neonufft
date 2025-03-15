@@ -7,7 +7,6 @@
 #include "neonufft/gpu/kernels/spreading_kernel.hpp"
 #include "neonufft/gpu/memory/device_view.hpp"
 #include "neonufft/gpu/types.hpp"
-#include "neonufft/gpu/util/kernel_launch_grid.hpp"
 #include "neonufft/gpu/util/partition_group.hpp"
 #include "neonufft/gpu/util/runtime.hpp"
 #include "neonufft/gpu/util/runtime_api.hpp"
@@ -16,16 +15,17 @@
 namespace neonufft {
 namespace gpu {
 
-template <typename KER, typename T, int N_SPREAD>
+template <typename KER, typename T>
 __device__ static void spread_points(const KER& kernel, IndexArray<1> thread_grid_idx,
                                      ConstDeviceView<Point<T, 1>, 1> points,
                                      ConstDeviceView<ComplexType<T>, 1> input,
                                      ConstDeviceView<ComplexType<T>, 1> prephase_optional,
                                      IndexArray<1> grid_shape, T* __restrict__ ker,
                                      ComplexType<T>& sum) {
+  constexpr int n_spread = KER::n_spread;
   assert(blockDim.x == PartitionGroup::width);
 
-  constexpr T half_width = T(N_SPREAD) / T(2);  // half spread width
+  constexpr T half_width = T(n_spread) / T(2);  // half spread width
   const auto thread_grid_idx_x = thread_grid_idx[0];
 
   for (int idx_p = 0; idx_p < points.size(); ++idx_p) {
@@ -37,12 +37,12 @@ __device__ static void spread_points(const KER& kernel, IndexArray<1> thread_gri
     const T x = idx_init_ceil_x - loc_x;                  // x1 in [-w/2,-w/2+1], up to rounding
 
     // precompute kernel
-    if (threadIdx.x < N_SPREAD) {
+    if (threadIdx.x < n_spread) {
       ker[threadIdx.x] = kernel.eval_scalar(x + threadIdx.x);
     }
     __syncthreads();
 
-    if (thread_grid_idx_x >= idx_init_x && thread_grid_idx_x < idx_init_x + N_SPREAD) {
+    if (thread_grid_idx_x >= idx_init_x && thread_grid_idx_x < idx_init_x + n_spread) {
       const auto ker_value_x = ker[thread_grid_idx_x - idx_init_x];
       auto in_value = input[point.index];
       if (prephase_optional.size()) {
@@ -57,16 +57,17 @@ __device__ static void spread_points(const KER& kernel, IndexArray<1> thread_gri
   }
 }
 
-template <typename KER, typename T, int N_SPREAD>
+template <typename KER, typename T>
 __device__ static void spread_points(const KER& kernel, IndexArray<2> thread_grid_idx,
                                      ConstDeviceView<Point<T, 2>, 1> points,
                                      ConstDeviceView<ComplexType<T>, 1> input,
                                      ConstDeviceView<ComplexType<T>, 1> prephase_optional,
                                      IndexArray<2> grid_shape, T* __restrict__ ker,
                                      ComplexType<T>& sum) {
+  constexpr int n_spread = KER::n_spread;
   assert(blockDim.x == PartitionGroup::width);
 
-  constexpr T half_width = T(N_SPREAD) / T(2);  // half spread width
+  constexpr T half_width = T(n_spread) / T(2);  // half spread width
 
   const int thread_idx = threadIdx.x + threadIdx.y * blockDim.x;
 
@@ -85,16 +86,16 @@ __device__ static void spread_points(const KER& kernel, IndexArray<2> thread_gri
 
     // precompute kernel
     // expensive kernel evaluation, ideally computed in single warp
-    if (thread_idx < 2 * N_SPREAD) {
-      const T ker_arg = thread_idx < N_SPREAD ? x + thread_idx : y + (thread_idx - N_SPREAD);
+    if (thread_idx < 2 * n_spread) {
+      const T ker_arg = thread_idx < n_spread ? x + thread_idx : y + (thread_idx - n_spread);
       ker[thread_idx] = kernel.eval_scalar(ker_arg);
     }
     __syncthreads();
 
-    if (thread_grid_idx[0] >= idx_init_x && thread_grid_idx[0] < idx_init_x + N_SPREAD &&
-        thread_grid_idx[1] >= idx_init_y && thread_grid_idx[1] < idx_init_y + N_SPREAD) {
+    if (thread_grid_idx[0] >= idx_init_x && thread_grid_idx[0] < idx_init_x + n_spread &&
+        thread_grid_idx[1] >= idx_init_y && thread_grid_idx[1] < idx_init_y + n_spread) {
       const auto ker_value_x = ker[thread_grid_idx[0] - idx_init_x];
-      const auto ker_value_y = ker[thread_grid_idx[1] - idx_init_y + N_SPREAD];
+      const auto ker_value_y = ker[thread_grid_idx[1] - idx_init_y + n_spread];
       auto in_value = input[point.index];
       if (prephase_optional.size()) {
         const auto pre = prephase_optional[point.index];
@@ -109,16 +110,17 @@ __device__ static void spread_points(const KER& kernel, IndexArray<2> thread_gri
   }
 }
 
-template <typename KER, typename T, int N_SPREAD>
+template <typename KER, typename T>
 __device__ static void spread_points(const KER& kernel, IndexArray<3> thread_grid_idx,
                                      ConstDeviceView<Point<T, 3>, 1> points,
                                      ConstDeviceView<ComplexType<T>, 1> input,
                                      ConstDeviceView<ComplexType<T>, 1> prephase_optional,
                                      IndexArray<3> grid_shape, T* __restrict__ ker,
                                      ComplexType<T>& sum) {
+  constexpr int n_spread = KER::n_spread;
   assert(blockDim.x == PartitionGroup::width);
 
-  constexpr T half_width = T(N_SPREAD) / T(2);  // half spread width
+  constexpr T half_width = T(n_spread) / T(2);  // half spread width
 
   const int thread_idx = threadIdx.x + blockDim.x * (threadIdx.y + (threadIdx.z * blockDim.y));
 
@@ -142,21 +144,21 @@ __device__ static void spread_points(const KER& kernel, IndexArray<3> thread_gri
 
     // precompute kernel
     // expensive kernel evaluation, ideally computed in single warp
-    if (thread_idx < 3 * N_SPREAD) {
-      const T ker_arg = thread_idx < N_SPREAD
+    if (thread_idx < 3 * n_spread) {
+      const T ker_arg = thread_idx < n_spread
                             ? x + thread_idx
-                            : (thread_idx < 2 * N_SPREAD ? y + (thread_idx - N_SPREAD)
-                                                         : z + (thread_idx - 2 * N_SPREAD));
+                            : (thread_idx < 2 * n_spread ? y + (thread_idx - n_spread)
+                                                         : z + (thread_idx - 2 * n_spread));
       ker[thread_idx] = kernel.eval_scalar(ker_arg);
     }
     __syncthreads();
 
-    if (thread_grid_idx[0] >= idx_init_x && thread_grid_idx[0] < idx_init_x + N_SPREAD &&
-        thread_grid_idx[1] >= idx_init_y && thread_grid_idx[1] < idx_init_y + N_SPREAD &&
-        thread_grid_idx[2] >= idx_init_z && thread_grid_idx[2] < idx_init_z + N_SPREAD) {
+    if (thread_grid_idx[0] >= idx_init_x && thread_grid_idx[0] < idx_init_x + n_spread &&
+        thread_grid_idx[1] >= idx_init_y && thread_grid_idx[1] < idx_init_y + n_spread &&
+        thread_grid_idx[2] >= idx_init_z && thread_grid_idx[2] < idx_init_z + n_spread) {
       const auto ker_value_x = ker[thread_grid_idx[0] - idx_init_x];
-      const auto ker_value_y = ker[thread_grid_idx[1] - idx_init_y + N_SPREAD];
-      const auto ker_value_z = ker[thread_grid_idx[2] - idx_init_z + 2 * N_SPREAD];
+      const auto ker_value_y = ker[thread_grid_idx[1] - idx_init_y + n_spread];
+      const auto ker_value_z = ker[thread_grid_idx[2] - idx_init_z + 2 * n_spread];
       auto in_value = input[point.index];
       if (prephase_optional.size()) {
         const auto pre = prephase_optional[point.index];
@@ -171,7 +173,7 @@ __device__ static void spread_points(const KER& kernel, IndexArray<3> thread_gri
   }
 }
 
-template <typename KER, typename T, IntType DIM, int N_SPREAD>
+template <typename KER, typename T, IntType DIM>
 __device__ static void spread_partition_group_1d(
     const KER& kernel, IntType idx_block_part_x, IndexArray<DIM> thread_grid_idx,
     ConstDeviceView<PartitionGroup, 1> partition, ConstDeviceView<Point<T, DIM>, 1> points,
@@ -181,23 +183,23 @@ __device__ static void spread_partition_group_1d(
   for (IntType idx_part_x = idx_block_part_x > 0 ? idx_block_part_x - 1 : 0;
        idx_part_x <= idx_block_part_x + 1 && idx_part_x < partition.shape(0); ++idx_part_x) {
     const auto part = partition[idx_part_x];
-    spread_points<KER, T, N_SPREAD>(kernel, thread_grid_idx, points.sub_view(part.begin, part.size),
+    spread_points<KER, T>(kernel, thread_grid_idx, points.sub_view(part.begin, part.size),
                                     input, prephase_optional, grid_shape, ker, sum);
   }
 
   // periodic wrap around with shifted grid index. We check the two last partition cells, because
   // the the last one might not be fully filled up and points in the second last may still be
-  // within N_SPREAD distance.
+  // within n_spread distance.
   if (idx_block_part_x == 0) {
     auto part = partition[partition.shape(0) - 1];
     auto thread_grid_idx_shifted = thread_grid_idx;
     thread_grid_idx_shifted[0] += grid_shape[0];
-    spread_points<KER, T, N_SPREAD>(kernel, thread_grid_idx_shifted,
+    spread_points<KER, T>(kernel, thread_grid_idx_shifted,
                                     points.sub_view(part.begin, part.size), input,
                                     prephase_optional, grid_shape, ker, sum);
     if (partition.shape(0) > 1) {
       part = partition[partition.shape(0) - 2];
-      spread_points<KER, T, N_SPREAD>(kernel, thread_grid_idx_shifted,
+      spread_points<KER, T>(kernel, thread_grid_idx_shifted,
                                       points.sub_view(part.begin, part.size), input,
                                       prephase_optional, grid_shape, ker, sum);
     }
@@ -207,13 +209,13 @@ __device__ static void spread_partition_group_1d(
     auto part = partition[0];
     auto thread_grid_idx_shifted = thread_grid_idx;
     thread_grid_idx_shifted[0] -= grid_shape[0];
-    spread_points<KER, T, N_SPREAD>(kernel, thread_grid_idx_shifted,
+    spread_points<KER, T>(kernel, thread_grid_idx_shifted,
                                     points.sub_view(part.begin, part.size), input,
                                     prephase_optional, grid_shape, ker, sum);
   }
 }
 
-template <typename KER, typename T, IntType DIM, int N_SPREAD>
+template <typename KER, typename T, IntType DIM>
 __device__ static void spread_partition_group_2d(
     const KER& kernel, IntType idx_block_part_x, IntType idx_block_part_y,
     IndexArray<DIM> thread_grid_idx, ConstDeviceView<PartitionGroup, 2> partition,
@@ -225,7 +227,7 @@ __device__ static void spread_partition_group_2d(
   // check from left to right +-1
   for (IntType idx_part_y = idx_block_part_y > 0 ? idx_block_part_y - 1 : 0;
        idx_part_y <= idx_block_part_y + 1 && idx_part_y < partition.shape(1); ++idx_part_y) {
-    spread_partition_group_1d<KER, T, DIM, N_SPREAD>(kernel, idx_block_part_x, thread_grid_idx,
+    spread_partition_group_1d<KER, T, DIM>(kernel, idx_block_part_x, thread_grid_idx,
                                                    partition.slice_view(idx_part_y), points, input,
                                                    prephase_optional, grid_shape, ker, sum);
   }
@@ -234,12 +236,12 @@ __device__ static void spread_partition_group_2d(
   if (idx_block_part_y == 0) {
     auto thread_grid_idx_shifted = thread_grid_idx;
     thread_grid_idx_shifted[1] += grid_shape[1];
-    spread_partition_group_1d<KER, T, DIM, N_SPREAD>(
+    spread_partition_group_1d<KER, T, DIM>(
         kernel, idx_block_part_x, thread_grid_idx_shifted,
         partition.slice_view(partition.shape(1) - 1), points, input, prephase_optional,
         grid_shape, ker, sum);
     if (partition.shape(1) > 1) {
-      spread_partition_group_1d<KER, T, DIM, N_SPREAD>(
+      spread_partition_group_1d<KER, T, DIM>(
           kernel, idx_block_part_x, thread_grid_idx_shifted,
           partition.slice_view(partition.shape(1) - 2), points, input, prephase_optional,
           grid_shape, ker, sum);
@@ -249,13 +251,13 @@ __device__ static void spread_partition_group_2d(
   if (idx_block_part_y >= partition.shape(1) - 2) {
     auto thread_grid_idx_shifted = thread_grid_idx;
     thread_grid_idx_shifted[1] -= grid_shape[1];
-    spread_partition_group_1d<KER, T, DIM, N_SPREAD>(
+    spread_partition_group_1d<KER, T, DIM>(
         kernel, idx_block_part_x, thread_grid_idx_shifted, partition.slice_view(0), points, input,
         prephase_optional, grid_shape, ker, sum);
   }
 }
 
-template <typename KER, typename T, int N_SPREAD>
+template <typename KER, typename T>
 __device__ static void spread_partition_group_3d(
     const KER& kernel, IntType idx_block_part_x, IntType idx_block_part_y, IntType idx_block_part_z,
     IndexArray<3> thread_grid_idx, ConstDeviceView<PartitionGroup, 3> partition,
@@ -265,7 +267,7 @@ __device__ static void spread_partition_group_3d(
   // check from left to right +-1
   for (IntType idx_part_z = idx_block_part_z > 0 ? idx_block_part_z - 1 : 0;
        idx_part_z <= idx_block_part_z + 1 && idx_part_z < partition.shape(2); ++idx_part_z) {
-    spread_partition_group_2d<KER, T, 3, N_SPREAD>(
+    spread_partition_group_2d<KER, T, 3>(
         kernel, idx_block_part_x, idx_block_part_y, thread_grid_idx,
         partition.slice_view(idx_part_z), points, input, prephase_optional, grid_shape, ker, sum);
   }
@@ -274,12 +276,12 @@ __device__ static void spread_partition_group_3d(
   if (idx_block_part_z == 0) {
     auto thread_grid_idx_shifted = thread_grid_idx;
     thread_grid_idx_shifted[2] += grid_shape[2];
-    spread_partition_group_2d<KER, T, 3, N_SPREAD>(
+    spread_partition_group_2d<KER, T, 3>(
         kernel, idx_block_part_x, idx_block_part_y, thread_grid_idx_shifted,
         partition.slice_view(partition.shape(2) - 1), points, input, prephase_optional, grid_shape,
         ker, sum);
     if (partition.shape(2) > 1) {
-      spread_partition_group_2d<KER, T, 3, N_SPREAD>(
+      spread_partition_group_2d<KER, T, 3>(
           kernel, idx_block_part_x, idx_block_part_y, thread_grid_idx_shifted,
           partition.slice_view(partition.shape(2) - 2), points, input, prephase_optional,
           grid_shape, ker, sum);
@@ -289,13 +291,13 @@ __device__ static void spread_partition_group_3d(
   if (idx_block_part_z >= partition.shape(2) - 2) {
     auto thread_grid_idx_shifted = thread_grid_idx;
     thread_grid_idx_shifted[2] -= grid_shape[2];
-    spread_partition_group_2d<KER, T, 3, N_SPREAD>(
+    spread_partition_group_2d<KER, T, 3>(
         kernel, idx_block_part_x, idx_block_part_y, thread_grid_idx_shifted,
         partition.slice_view(0), points, input, prephase_optional, grid_shape, ker, sum);
   }
 }
 
-template <typename KER, typename T, int N_SPREAD, int BLOCK_SIZE>
+template <typename KER, typename T, int BLOCK_SIZE>
 __global__ static void __launch_bounds__(BLOCK_SIZE)
     spread_1d_kernel(KER kernel, ConstDeviceView<PartitionGroup, 1> partition,
                      ConstDeviceView<Point<T, 1>, 1> points,
@@ -303,14 +305,15 @@ __global__ static void __launch_bounds__(BLOCK_SIZE)
                      ConstDeviceView<ComplexType<T>, 1> prephase_optional,
                      DeviceView<ComplexType<T>, 1> grid) {
   static_assert(BLOCK_SIZE == PartitionGroup::width);
-  __shared__ T ker[N_SPREAD];
+  constexpr int n_spread = KER::n_spread;
+  __shared__ T ker[n_spread];
 
   for (IntType idx_block_part_x = blockIdx.x; idx_block_part_x < partition.shape(0);
        idx_block_part_x += gridDim.x) {
     ComplexType<T> sum{0, 0};
 
     const IntType thread_grid_idx_x = threadIdx.x + idx_block_part_x * PartitionGroup::width;
-    spread_partition_group_1d<KER, T, 1, N_SPREAD>(kernel, idx_block_part_x, thread_grid_idx_x,
+    spread_partition_group_1d<KER, T, 1>(kernel, idx_block_part_x, thread_grid_idx_x,
                                                    partition, points, input, prephase_optional,
                                                    grid.shape(), ker, sum);
 
@@ -323,15 +326,16 @@ __global__ static void __launch_bounds__(BLOCK_SIZE)
   }
 }
 
-template <typename KER, typename T, int N_SPREAD, int BLOCK_SIZE>
-__global__ static void __launch_bounds__(BLOCK_SIZE * BLOCK_SIZE)
+template <typename KER, typename T, int BLOCK_SIZE>
+__global__ static void __launch_bounds__(BLOCK_SIZE* BLOCK_SIZE)
     spread_2d_kernel(KER kernel, ConstDeviceView<PartitionGroup, 2> partition,
                      ConstDeviceView<Point<T, 2>, 1> points,
                      ConstDeviceView<ComplexType<T>, 1> input,
                      ConstDeviceView<ComplexType<T>, 1> prephase_optional,
                      DeviceView<ComplexType<T>, 2> grid) {
   static_assert(BLOCK_SIZE == PartitionGroup::width);
-  __shared__ T ker[2 * N_SPREAD];
+  constexpr int n_spread = KER::n_spread;
+  __shared__ T ker[2 * n_spread];
 
   for (IntType idx_block_part_y = blockIdx.y; idx_block_part_y < partition.shape(1);
        idx_block_part_y += gridDim.y) {
@@ -342,7 +346,7 @@ __global__ static void __launch_bounds__(BLOCK_SIZE * BLOCK_SIZE)
 
       const IntType thread_grid_idx_x = threadIdx.x + idx_block_part_x * PartitionGroup::width;
 
-      spread_partition_group_2d<KER, T, 2, N_SPREAD>(
+      spread_partition_group_2d<KER, T, 2>(
           kernel, idx_block_part_x, idx_block_part_y, {thread_grid_idx_x, thread_grid_idx_y},
           partition, points, input, prephase_optional, grid.shape(), ker, sum);
 
@@ -357,7 +361,7 @@ __global__ static void __launch_bounds__(BLOCK_SIZE * BLOCK_SIZE)
   }
 }
 
-template <typename KER, typename T, int N_SPREAD, int BLOCK_SIZE>
+template <typename KER, typename T, int BLOCK_SIZE>
 __global__ static void __launch_bounds__(BLOCK_SIZE * BLOCK_SIZE * BLOCK_SIZE)
     spread_3d_kernel(KER kernel, ConstDeviceView<PartitionGroup, 3> partition,
                      ConstDeviceView<Point<T, 3>, 1> points,
@@ -365,7 +369,8 @@ __global__ static void __launch_bounds__(BLOCK_SIZE * BLOCK_SIZE * BLOCK_SIZE)
                      ConstDeviceView<ComplexType<T>, 1> prephase_optional,
                      DeviceView<ComplexType<T>, 3> grid) {
   static_assert(BLOCK_SIZE == PartitionGroup::width);
-  __shared__ T ker[3 * N_SPREAD];
+  constexpr int n_spread = KER::n_spread;
+  __shared__ T ker[3 * n_spread];
 
   for (IntType idx_block_part_z = blockIdx.z; idx_block_part_z < partition.shape(2);
        idx_block_part_z += gridDim.z) {
@@ -381,7 +386,7 @@ __global__ static void __launch_bounds__(BLOCK_SIZE * BLOCK_SIZE * BLOCK_SIZE)
 
         ComplexType<T> sum{0, 0};
 
-        spread_partition_group_3d<KER, T, N_SPREAD>(
+        spread_partition_group_3d<KER, T>(
             kernel, idx_block_part_x, idx_block_part_y, idx_block_part_z,
             {thread_grid_idx_x, thread_grid_idx_y, thread_grid_idx_z}, partition, points, input,
             prephase_optional, grid.shape(), ker, sum);
@@ -416,15 +421,14 @@ auto spread_dispatch(const api::DevicePropType& prop, const api::StreamType& str
     if constexpr (DIM == 1) {
       const dim3 block_dim(BLOCK_SIZE, 1, 1);
       const dim3 grid_dim(std::min<IntType>(partition.shape(0), prop.maxGridSize[0]), 1, 1);
-      api::launch_kernel(spread_1d_kernel<decltype(kernel), T, N_SPREAD, BLOCK_SIZE>, grid_dim,
-                         block_dim, 0, stream, kernel, partition, points, input, prephase_optional,
-                         grid);
+      api::launch_kernel(spread_1d_kernel<decltype(kernel), T, BLOCK_SIZE>, grid_dim, block_dim, 0,
+                         stream, kernel, partition, points, input, prephase_optional, grid);
     } else if constexpr (DIM == 2) {
       const dim3 block_dim(BLOCK_SIZE, BLOCK_SIZE, 1);
       const dim3 grid_dim(std::min<IntType>(partition.shape(0), prop.maxGridSize[0]),
                           std::min<IntType>(partition.shape(1), prop.maxGridSize[1]), 1);
 
-      api::launch_kernel(spread_2d_kernel<decltype(kernel), T, N_SPREAD, BLOCK_SIZE>, grid_dim,
+      api::launch_kernel(spread_2d_kernel<decltype(kernel), T, BLOCK_SIZE>, grid_dim,
                          block_dim, 0, stream, kernel, partition, points, input, prephase_optional,
                          grid);
     } else {
@@ -433,7 +437,7 @@ auto spread_dispatch(const api::DevicePropType& prop, const api::StreamType& str
                           std::min<IntType>(partition.shape(1), prop.maxGridSize[1]),
                           std::min<IntType>(partition.shape(2), prop.maxGridSize[2]));
 
-      api::launch_kernel(spread_3d_kernel<decltype(kernel), T, N_SPREAD, BLOCK_SIZE>, grid_dim,
+      api::launch_kernel(spread_3d_kernel<decltype(kernel), T, BLOCK_SIZE>, grid_dim,
                          block_dim, 0, stream, kernel, partition, points, input, prephase_optional,
                          grid);
     }

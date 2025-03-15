@@ -17,15 +17,9 @@ FFTGrid<T, DIM>::FFTGrid() : plan_(nullptr, [](void *) {}) {}
 
 template <typename T, std::size_t DIM>
 FFTGrid<T, DIM>::FFTGrid(const std::shared_ptr<Allocator>& alloc, StreamType stream,
-                         IndexType shape, int sign, IndexType padding)
-    : plan_(nullptr, [](void*) {}), padding_(padding), sign_(sign) {
-  auto paddedShape = shape;
-  for (IntType d = 0; d < DIM; ++d) {
-    paddedShape[d] += 2 * padding[d];
-  }
-
-  padded_grid_.reset(paddedShape, alloc);
-  grid_ = padded_grid_.sub_view(padding, shape);
+                         IndexType shape, int sign)
+    : plan_(nullptr, [](void*) {}), sign_(sign) {
+  grid_.reset(shape, alloc);
 
   // fftw is row-major. Stored grid is coloumn-major.
   std::array<int, DIM> n;

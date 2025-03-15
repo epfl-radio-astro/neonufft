@@ -57,6 +57,30 @@ public:
 
     spread<T, DIM>(opt_.kernel_type, kernel_param_, nu_loc_.shape(0), nu_loc_.data(), in, nullptr,
                    fft_grid_.shape().to_array(), fft_grid_.padded_view());
+    // if constexpr (DIM == 2) {
+    //   for (IntType j = 0; j < fft_grid_.padded_view().shape(1); ++j) {
+    //     for (IntType i = 0; i < fft_grid_.padded_view().shape(0); ++i) {
+    //       printf("(%f, %f), ", fft_grid_.padded_view()[{i, j}].real(),
+    //              fft_grid_.padded_view()[{i, j}].imag());
+    //     }
+    //     printf("\n");
+    //   }
+    //   printf("-------\n");
+    // }
+
+
+    // if constexpr (DIM == 3) {
+    //   for (IntType k = 0; k < fft_grid_.view().shape(2); ++k) {
+    //     for (IntType j = 0; j < fft_grid_.view().shape(1); ++j) {
+    //       for (IntType i = 0; i < fft_grid_.view().shape(0); ++i) {
+    //         printf("(%f, %f), ", fft_grid_.view()[{i, j, k}].real(), fft_grid_.view()[{i, j, k}].imag());
+    //       }
+    //       printf("\n");
+    //     }
+    //     printf("--\n");
+    //   }
+    //   printf("-------\n");
+    // }
 
     fold_padding<T, DIM>(kernel_param_.n_spread, fft_grid_.padded_view());
 

@@ -14,12 +14,20 @@ struct EsKernelDirect;
 
 template <int N_SPREAD>
 struct EsKernelDirect<float, N_SPREAD> {
+  constexpr static int n_spread = N_SPREAD;
+
+
   __device__ __forceinline__ float eval_scalar(float x) const {
     constexpr float es_c = 4.f / float(N_SPREAD * N_SPREAD);
     const float arg = 1.f - es_c * x * x;
     if (arg <= 0) return 0.0;
 
-    return expf(es_beta * (sqrtf(arg) - 1.f));
+    // return expf(es_beta * (sqrtf(arg) - 1.f));
+#ifdef NEONUFFT_ROCM
+    return __expf(es_beta * (sqrtf(arg) - 1.f));
+#else
+    return __expf(es_beta * (__fsqrt_ru(arg) - 1.f));
+#endif
   }
 
   float es_beta;
@@ -27,6 +35,8 @@ struct EsKernelDirect<float, N_SPREAD> {
 
 template <int N_SPREAD>
 struct EsKernelDirect<double, N_SPREAD> {
+  constexpr static int n_spread = N_SPREAD;
+
   __device__ __forceinline__ double eval_scalar(double x) const {
     constexpr float es_c = 4.0 / double(N_SPREAD * N_SPREAD);
     const double arg = 1.0 - es_c * x * x;

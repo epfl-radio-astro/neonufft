@@ -25,8 +25,7 @@ public:
 
   FFTGrid();
 
-  FFTGrid(const std::shared_ptr<Allocator>& alloc, StreamType stream, IndexType shape, int sign,
-          IndexType padding = IndexType());
+  FFTGrid(const std::shared_ptr<Allocator>& alloc, StreamType stream, IndexType shape, int sign);
 
   FFTGrid(const FFTGrid&) = delete;
 
@@ -38,22 +37,16 @@ public:
 
   DeviceView<ComplexType<T>, DIM> view() { return grid_; }
 
-  DeviceView<ComplexType<T>, DIM> padded_view() { return padded_grid_.view(); }
-
   IndexType shape() { return grid_.shape(); }
 
   IntType shape(IntType i) { return grid_.shape(i); }
-
-  IndexType padding() { return padding_; }
 
   void transform();
 
 private:
   std::unique_ptr<void, void (*)(void *)> plan_;
-  IndexType padding_;
-  DeviceArray<ComplexType<T>, DIM> padded_grid_;
+  DeviceArray<ComplexType<T>, DIM> grid_;
   DeviceArray<char, 1> workspace_;
-  DeviceView<ComplexType<T>, DIM> grid_;
   int sign_ = -1;
 };
 

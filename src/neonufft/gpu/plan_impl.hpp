@@ -33,7 +33,6 @@
 #include "neonufft/gpu/util/partition_group.hpp"
 #include "neonufft/gpu//util/fft_grid.hpp"
 #include "neonufft/util/point.hpp"
-#include "neonufft/util/spread_padding.hpp"
 
 namespace neonufft {
 namespace gpu {
@@ -64,20 +63,30 @@ public:
 
   void transform_type_1(const ComplexType<T>* in, ComplexType<T>* out,
                         std::array<IntType, DIM> out_strides) {
-    fft_grid_.padded_view().zero(stream_);
+    fft_grid_.view().zero(stream_);
 
     ConstDeviceView<ComplexType<T>, 1> in_view(in, nu_loc_.shape(0), 1);
 
     //TODO: spread
     gpu::spread<T, DIM>(device_prop_, stream_, kernel_param_, partition_, nu_loc_, in_view,
                         ConstDeviceView<ComplexType<T>, 1>(), fft_grid_.shape(),
-                        fft_grid_.padded_view());
+                        fft_grid_.view());
 
+    // if constexpr(DIM==3)
     // {
-    //   HostArray<ComplexType<T>, DIM> tmp(fft_grid_.padded_view().shape());
-    //   memcopy(fft_grid_.padded_view(), tmp, stream_);
+    //   HostArray<ComplexType<T>, DIM> tmp(fft_grid_.view().shape());
+    //   memcopy(fft_grid_.view(), tmp, stream_);
     //   api::device_synchronize();
-    //   api::device_synchronize();
+    //   for (IntType k = 0; k < tmp.shape(2); ++k) {
+    //     for (IntType j = 0; j < tmp.shape(1); ++j) {
+    //       for (IntType i = 0; i < tmp.shape(0); ++i) {
+    //         printf("(%f, %f), ", tmp[{i, j,k}].x, tmp[{i, j,k}].y);
+    //       }
+    //       printf("\n");
+    //     }
+    //     printf("--\n");
+    //   }
+    //   printf("-------\n");
     // }
 
     fft_grid_.transform();
@@ -102,7 +111,7 @@ public:
 
   void transform_type_2(const ComplexType<T>* in, std::array<IntType, DIM> in_strides,
                         ComplexType<T>* out) {
-    fft_grid_.padded_view().zero(stream_);
+    fft_grid_.view().zero(stream_);
 
     std::array<ConstDeviceView<T, 1>, DIM> correction_factor_views;
     for (IntType dim = 0; dim < DIM; ++dim) {
@@ -173,11 +182,7 @@ public:
       new_grid |= (fft_grid_size[d] != fft_grid_.shape(d));
     }
     if (new_grid) {
-      // const auto padding = spread_padding(kernel_param_.n_spread);
-      const auto padding = 0;
-      typename decltype(fft_grid_)::IndexType pad;
-      pad.fill(padding);
-      fft_grid_ = FFTGrid<T, DIM>(device_alloc_, stream_, fft_grid_size, sign_, pad);
+      fft_grid_ = FFTGrid<T, DIM>(device_alloc_, stream_, fft_grid_size, sign_);
 
       // recompute correction factor for kernel windowing
       // we compute the inverse to use multiplication during execution
@@ -198,7 +203,7 @@ public:
 
       typename decltype(partition_)::IndexType part_grid_size;
       for (std::size_t d = 0; d < DIM; ++d) {
-        part_grid_size[d] = (fft_grid_.padded_view().shape(d) + gpu::PartitionGroup::width - 1) /
+        part_grid_size[d] = (fft_grid_.view().shape(d) + gpu::PartitionGroup::width - 1) /
                             PartitionGroup::width;
       }
       partition_.reset(part_grid_size, device_alloc_);
@@ -209,17 +214,15 @@ public:
 
   void set_nu_points(IntType num_nu, std::array<const T*, DIM> loc) {
     std::array<ConstDeviceView<T, 1>, DIM> loc_views;
-    std::array<IntType, DIM> padding;
     for (IntType dim = 0; dim < DIM; ++dim) {
       loc_views[dim] = ConstDeviceView<T, 1>(loc[dim], num_nu, 1);
-      padding[dim] = spread_padding(kernel_param_.n_spread);
     }
 
     if (nu_loc_.shape(0) != num_nu) {
       nu_loc_.reset(num_nu, device_alloc_);
     }
 
-    rescale_and_permut<T, DIM>(device_prop_, stream_, loc_views, padding, fft_grid_.view().shape(),
+    rescale_and_permut<T, DIM>(device_prop_, stream_, loc_views, fft_grid_.view().shape(),
                                partition_, nu_loc_);
 
     api::stream_synchronize(stream_);

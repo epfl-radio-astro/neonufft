@@ -16,7 +16,7 @@ namespace neonufft {
 namespace gpu {
 template <typename T, IntType DIM>
 auto rescale_and_permut(const api::DevicePropType& prop, const api::StreamType& stream,
-                        std::array<ConstDeviceView<T, 1>, DIM> loc, std::array<IntType, DIM> offset,
+                        std::array<ConstDeviceView<T, 1>, DIM> loc,
                         std::array<IntType, DIM> grid_size,
                         DeviceView<PartitionGroup, DIM> partition,
                         DeviceView<Point<T, DIM>, 1> points) -> void;
