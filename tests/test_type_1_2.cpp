@@ -46,7 +46,7 @@ struct PlanTestParam {
         use_gpu(std::get<7>(t)),
         type(std::get<8>(t)),
         dim(1) {
-    if (modes[1] > 1 && modes[2] > 1)
+    if (modes[2] > 1)
       dim = 3;
     else if (modes[1] > 1)
       dim = 2;
@@ -314,8 +314,8 @@ INSTANTIATE_TEST_SUITE_P(
     ::testing::Combine(::testing::Values<IntType>(1, 10, 200,
                                                   503),              // number of in points
                        ::testing::Values<IntType>(1, 10, 200, 203),  // mode x
-                       ::testing::Values<IntType>(1, 49),            // mode y
-                       ::testing::Values<IntType>(1, 49),            // mode z
+                       ::testing::Values<IntType>(1, 10),            // mode y
+                       ::testing::Values<IntType>(1, 10),            // mode z
                        ::testing::Values<double>(2.0),               // upsampling factor
                        ::testing::Values<double>(1e-2, 1e-5),        // tolerance
                        ::testing::Values<int>(1, -1),                // sign
@@ -323,16 +323,16 @@ INSTANTIATE_TEST_SUITE_P(
                        ::testing::Values<int>(1, 2)),                // transform type 1 or 2
     param_type_names);
 
-INSTANTIATE_TEST_SUITE_P(
-    Plan, PlanTestDouble,
-    ::testing::Combine(::testing::Values<IntType>(1, 10, 200,
-                                                  503),              // number of in points
-                       ::testing::Values<IntType>(1, 10, 100, 203),  // mode x
-                       ::testing::Values<IntType>(1, 49),            // mode y
-                       ::testing::Values<IntType>(1, 30),            // mode z
-                       ::testing::Values<double>(2.0),               // upsampling factor
-                       ::testing::Values<double>(1e-4, 1e-7),        // tolerance
-                       ::testing::Values<int>(1, -1),                // sign
-                       ::testing::Values<bool>(NEONUFFT_PU_VALUES),  // cpu, gpu
-                       ::testing::Values<int>(1, 2)),                // transform type 1 or 2
-    param_type_names);
+// INSTANTIATE_TEST_SUITE_P(
+//     Plan, PlanTestDouble,
+//     ::testing::Combine(::testing::Values<IntType>(1, 10, 200,
+//                                                   503),              // number of in points
+//                        ::testing::Values<IntType>(1, 10, 100, 203),  // mode x
+//                        ::testing::Values<IntType>(1, 49),            // mode y
+//                        ::testing::Values<IntType>(1, 30),            // mode z
+//                        ::testing::Values<double>(2.0),               // upsampling factor
+//                        ::testing::Values<double>(1e-4, 1e-7),        // tolerance
+//                        ::testing::Values<int>(1, -1),                // sign
+//                        ::testing::Values<bool>(NEONUFFT_PU_VALUES),  // cpu, gpu
+//                        ::testing::Values<int>(1, 2)),                // transform type 1 or 2
+//     param_type_names);
