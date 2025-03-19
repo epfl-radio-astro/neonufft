@@ -410,7 +410,7 @@ auto spread_dispatch(const api::DevicePropType& prop, const api::StreamType& str
                      ConstDeviceView<Point<T, DIM>, 1> points,
                      ConstDeviceView<ComplexType<T>, 1> input,
                      ConstDeviceView<ComplexType<T>, 1> prephase_optional,
-                     std::array<IntType, DIM> grid_size, DeviceView<ComplexType<T>, DIM> grid)
+                     DeviceView<ComplexType<T>, DIM> grid)
     -> void {
   static_assert(N_SPREAD >= 2);
   static_assert(N_SPREAD <= 16);
@@ -444,7 +444,7 @@ auto spread_dispatch(const api::DevicePropType& prop, const api::StreamType& str
   } else {
     if constexpr (N_SPREAD > 2) {
       spread_dispatch<T, DIM, N_SPREAD - 1, BLOCK_SIZE>(prop, stream, param, partition, points,
-                                                        input, prephase_optional, grid_size, grid);
+                                                        input, prephase_optional, grid);
     } else {
       throw InternalError("n_spread not in [2, 16]");
     }
@@ -456,10 +456,10 @@ void spread(const api::DevicePropType& prop, const api::StreamType& stream,
             const KernelParameters<T>& param, ConstDeviceView<PartitionGroup, DIM> partition,
             ConstDeviceView<Point<T, DIM>, 1> points, ConstDeviceView<ComplexType<T>, 1> input,
             ConstDeviceView<ComplexType<T>, 1> prephase_optional,
-            std::array<IntType, DIM> grid_size, DeviceView<ComplexType<T>, DIM> grid) {
+            DeviceView<ComplexType<T>, DIM> grid) {
   constexpr int block_size = PartitionGroup::width;
   spread_dispatch<T, DIM, 16, block_size>(prop, stream, param, partition, points, input,
-                                          prephase_optional, grid_size, grid);
+                                          prephase_optional, grid);
 }
 
 template void spread<float, 1>(const api::DevicePropType& prop, const api::StreamType& stream,
@@ -468,7 +468,6 @@ template void spread<float, 1>(const api::DevicePropType& prop, const api::Strea
                                ConstDeviceView<Point<float, 1>, 1> points,
                                ConstDeviceView<ComplexType<float>, 1> input,
                                ConstDeviceView<ComplexType<float>, 1> prephase_optional,
-                               std::array<IntType, 1> grid_size,
                                DeviceView<ComplexType<float>, 1> grid);
 
 template void spread<float, 2>(const api::DevicePropType& prop, const api::StreamType& stream,
@@ -477,7 +476,6 @@ template void spread<float, 2>(const api::DevicePropType& prop, const api::Strea
                                ConstDeviceView<Point<float, 2>, 1> points,
                                ConstDeviceView<ComplexType<float>, 1> input,
                                ConstDeviceView<ComplexType<float>, 1> prephase_optional,
-                               std::array<IntType, 2> grid_size,
                                DeviceView<ComplexType<float>, 2> grid);
 
 template void spread<float, 3>(const api::DevicePropType& prop, const api::StreamType& stream,
@@ -486,7 +484,6 @@ template void spread<float, 3>(const api::DevicePropType& prop, const api::Strea
                                ConstDeviceView<Point<float, 3>, 1> points,
                                ConstDeviceView<ComplexType<float>, 1> input,
                                ConstDeviceView<ComplexType<float>, 1> prephase_optional,
-                               std::array<IntType, 3> grid_size,
                                DeviceView<ComplexType<float>, 3> grid);
 
 template void spread<double, 1>(const api::DevicePropType& prop, const api::StreamType& stream,
@@ -495,7 +492,6 @@ template void spread<double, 1>(const api::DevicePropType& prop, const api::Stre
                                 ConstDeviceView<Point<double, 1>, 1> points,
                                 ConstDeviceView<ComplexType<double>, 1> input,
                                 ConstDeviceView<ComplexType<double>, 1> prephase_optional,
-                                std::array<IntType, 1> grid_size,
                                 DeviceView<ComplexType<double>, 1> grid);
 
 template void spread<double, 2>(const api::DevicePropType& prop, const api::StreamType& stream,
@@ -504,7 +500,6 @@ template void spread<double, 2>(const api::DevicePropType& prop, const api::Stre
                                 ConstDeviceView<Point<double, 2>, 1> points,
                                 ConstDeviceView<ComplexType<double>, 1> input,
                                 ConstDeviceView<ComplexType<double>, 1> prephase_optional,
-                                std::array<IntType, 2> grid_size,
                                 DeviceView<ComplexType<double>, 2> grid);
 
 template void spread<double, 3>(const api::DevicePropType& prop, const api::StreamType& stream,
@@ -513,7 +508,6 @@ template void spread<double, 3>(const api::DevicePropType& prop, const api::Stre
                                 ConstDeviceView<Point<double, 3>, 1> points,
                                 ConstDeviceView<ComplexType<double>, 1> input,
                                 ConstDeviceView<ComplexType<double>, 1> prephase_optional,
-                                std::array<IntType, 3> grid_size,
                                 DeviceView<ComplexType<double>, 3> grid);
 
 }  // namespace gpu

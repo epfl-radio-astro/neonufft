@@ -21,6 +21,6 @@ void spread(const api::DevicePropType& prop, const api::StreamType& stream,
             const KernelParameters<T>& param, ConstDeviceView<PartitionGroup, DIM> partition,
             ConstDeviceView<Point<T, DIM>, 1> points, ConstDeviceView<ComplexType<T>, 1> input,
             ConstDeviceView<ComplexType<T>, 1> prephase_optional,
-            std::array<IntType, DIM> grid_size, DeviceView<ComplexType<T>, DIM> padded_grid);
+            DeviceView<ComplexType<T>, DIM> padded_grid);
 }  // namespace gpu
 }  // namespace neonufft
