@@ -69,8 +69,7 @@ public:
 
     //TODO: spread
     gpu::spread<T, DIM>(device_prop_, stream_, kernel_param_, partition_, nu_loc_, in_view,
-                        ConstDeviceView<ComplexType<T>, 1>(), fft_grid_.shape(),
-                        fft_grid_.view());
+                        ConstDeviceView<ComplexType<T>, 1>(), fft_grid_.view());
 
     // if constexpr(DIM==3)
     // {
