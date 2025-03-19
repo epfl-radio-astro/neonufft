@@ -98,14 +98,14 @@ public:
   inline auto strides(IntType i) const noexcept -> IntType { return v_.strides(i); }
 
   inline auto slice_view(IntType outer_index) const -> SliceType {
-    return SliceType(v_.slice_view(outer_index));
+    return v_.slice_view(outer_index);
   }
 
   inline auto sub_view(const IndexType& offset, const IndexType& shape) const -> DeviceView<T, DIM> {
-    return DeviceView(v_.sub_view(offset, shape));
+    return v_.sub_view(offset, shape);
   }
 
-  inline auto zero() -> void { v_.zero(); }
+  inline auto zero(const StreamType& stream) -> void { v_.zero(stream); }
 
 private:
   static inline auto shape_to_stride(const IndexType& shape) -> IndexType {

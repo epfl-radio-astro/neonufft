@@ -249,27 +249,12 @@ public:
       correction_factor_views[dim] = correction_factors_[dim].view();
     }
 
-    const auto padding = spread_padding(kernel_param_.n_spread);
-    if constexpr (DIM == 1) {
-      upsample<T, DIM>(
-          NEONUFFT_MODE_ORDER_CMCL,
-          spread_grid_.sub_view(padding,
-                                grid_info_.spread_grid_size[0]),
-          correction_factor_views, fft_grid_.view());
-    } else if constexpr (DIM == 2) {
-      upsample<T, DIM>(
-          NEONUFFT_MODE_ORDER_CMCL,
-          spread_grid_.sub_view({padding, padding},
-                                {grid_info_.spread_grid_size[0], grid_info_.spread_grid_size[1]}),
-          correction_factor_views, fft_grid_.view());
-    } else {
-      upsample<T, DIM>(
-          NEONUFFT_MODE_ORDER_CMCL,
-          spread_grid_.sub_view({padding, padding, padding},
-                                {grid_info_.spread_grid_size[0], grid_info_.spread_grid_size[1],
-                                 grid_info_.spread_grid_size[2]}),
-          correction_factor_views, fft_grid_.view());
-    }
+    IndexArray<DIM> padding;
+    padding.fill(spread_padding(kernel_param_.n_spread));
+
+    upsample<T, DIM>(NEONUFFT_MODE_ORDER_CMCL,
+                     spread_grid_.sub_view(padding, grid_info_.spread_grid_size),
+                     correction_factor_views, fft_grid_.view());
 
     fft_grid_.transform();
 

@@ -47,8 +47,8 @@ __device__ static void spread_points(const KER& kernel, IndexArray<1> thread_gri
       auto in_value = input[point.index];
       if (prephase_optional.size()) {
         const auto pre = prephase_optional[point.index];
-        in_value.x = in_value.x * pre.x - in_value.y * pre.y;
-        in_value.y = in_value.x * pre.y + in_value.y * pre.x;
+        in_value = ComplexType<T>{in_value.x * pre.x - in_value.y * pre.y,
+                                  in_value.x * pre.y + in_value.y * pre.x};
       }
 
       sum.x += ker_value_x * in_value.x;
@@ -99,8 +99,8 @@ __device__ static void spread_points(const KER& kernel, IndexArray<2> thread_gri
       auto in_value = input[point.index];
       if (prephase_optional.size()) {
         const auto pre = prephase_optional[point.index];
-        in_value.x = in_value.x * pre.x - in_value.y * pre.y;
-        in_value.y = in_value.x * pre.y + in_value.y * pre.x;
+        in_value = ComplexType<T>{in_value.x * pre.x - in_value.y * pre.y,
+                                  in_value.x * pre.y + in_value.y * pre.x};
       }
 
       const auto ker_value = ker_value_x * ker_value_y;
@@ -162,8 +162,8 @@ __device__ static void spread_points(const KER& kernel, IndexArray<3> thread_gri
       auto in_value = input[point.index];
       if (prephase_optional.size()) {
         const auto pre = prephase_optional[point.index];
-        in_value.x = in_value.x * pre.x - in_value.y * pre.y;
-        in_value.y = in_value.x * pre.y + in_value.y * pre.x;
+        in_value = ComplexType<T>{in_value.x * pre.x - in_value.y * pre.y,
+                                  in_value.x * pre.y + in_value.y * pre.x};
       }
 
       const auto ker_value = ker_value_x * ker_value_y * ker_value_z;

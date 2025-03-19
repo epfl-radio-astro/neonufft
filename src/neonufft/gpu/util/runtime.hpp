@@ -24,6 +24,10 @@ inline auto launch_kernel(F func, const dim3 thread_grid, const dim3 thread_bloc
   hipLaunchKernelGGL(func, thread_grid, thread_block, shared_memory_bytes, stream,
                      std::forward<ARGS>(args)...);
 #endif
+#ifndef NDEBUG
+  device_synchronize();
+  check_status(get_last_error());
+#endif
 }
 
 }  // namespace api

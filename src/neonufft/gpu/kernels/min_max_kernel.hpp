@@ -3,12 +3,7 @@
 #include "neonufft//config.h"
 //---
 
-#include <array>
-#include <cstddef>
-
 #include "neonufft/gpu/memory/device_view.hpp"
-#include "neonufft/gpu/util/cub_api.hpp"
-#include "neonufft/gpu/util/runtime.hpp"
 #include "neonufft/gpu/util/runtime_api.hpp"
 
 namespace neonufft {

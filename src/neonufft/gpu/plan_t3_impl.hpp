@@ -15,17 +15,20 @@
 #include "neonufft/gpu/device_allocator.hpp"
 #include "neonufft/gpu/kernels/downsample_kernel.hpp"
 #include "neonufft/gpu/kernels/interpolation_kernel.hpp"
+#include "neonufft/gpu/kernels/min_max_kernel.hpp"
 #include "neonufft/gpu/kernels/rescale_loc_kernel.hpp"
 #include "neonufft/gpu/kernels/spreading_kernel.hpp"
 #include "neonufft/gpu/kernels/upsample_kernel.hpp"
-#include "neonufft/gpu/kernels/min_max_kernel.hpp"
 #include "neonufft/gpu/memory/copy.hpp"
 #include "neonufft/gpu/memory/device_array.hpp"
 #include "neonufft/gpu/plan.hpp"
 #include "neonufft/gpu/util/partition_group.hpp"
 #include "neonufft/gpu/util/runtime_api.hpp"
+#include "neonufft/kernels/compute_postphase_kernel.hpp"
+#include "neonufft/kernels/compute_prephase_kernel.hpp"
 #include "neonufft/kernels/downsample_kernel.hpp"
 #include "neonufft/kernels/interpolation_kernel.hpp"
+#include "neonufft/kernels/nuft_real_kernel.hpp"
 #include "neonufft/kernels/rescale_loc_kernel.hpp"
 #include "neonufft/kernels/spreading_kernel.hpp"
 #include "neonufft/kernels/upsample_kernel.hpp"
@@ -80,16 +83,16 @@ public:
     DeviceArray<T, 1> min_max_buffer(4 * DIM, device_alloc_);
 
     for (IntType d = 0; d < DIM; ++d) {
-      min_max<T>(ConstDeviceView<T, 1>(input_points[d], num_in), min_max_buffer.data() + 2 * d,
-                 min_max_buffer.data() + 2 * d + 1, input_buffer.data(), stream_);
-      min_max<T>(ConstDeviceView<T, 1>(output_points[d], num_out),
+      min_max<T>(ConstDeviceView<T, 1>(input_points[d], num_in, 1), min_max_buffer.data() + 2 * d,
+                 min_max_buffer.data() + 2 * d + 1, input_buffer, stream_);
+      min_max<T>(ConstDeviceView<T, 1>(output_points[d], num_out, 1),
                  min_max_buffer.data() + 2 * DIM + 2 * d,
-                 min_max_buffer.data() + 2 * DIM + 2 * d + 1, output_buffer.data(), stream_);
+                 min_max_buffer.data() + 2 * DIM + 2 * d + 1, output_buffer, stream_);
     }
 
     HostArray<T, 1> min_max_host_buffer(min_max_buffer.shape());
     memcopy(min_max_buffer, min_max_host_buffer, stream_);
-    api::stream_synchronize(stream_;);
+    api::stream_synchronize(stream_);
 
     std::array<T, DIM> input_min, input_max, output_min, output_max;
 
@@ -100,8 +103,8 @@ public:
       output_max[d] = min_max_host_buffer[2 * d + 2 * DIM];
     }
 
-    grid_info_ = GridInfo(kernel_param_.n_spread, opt_.upsampfac, opt_.recenter_threshold,
-                          input_min, input_max, output_min, output_max);
+    grid_info_ = GridInfoT3<T, DIM>(kernel_param_.n_spread, opt_.upsampfac, opt_.recenter_threshold,
+                                    input_min, input_max, output_min, output_max);
 
     this->init(input_min, input_max, output_min, output_max);
     this->set_input_points(num_in, input_points);
@@ -130,22 +133,42 @@ public:
     if (grid_info_.output_offsets[0] != 0 ||
         grid_info_.output_offsets[std::min<IntType>(1, DIM - 1)] != 0 ||
         grid_info_.output_offsets[std::min<IntType>(2, DIM - 1)] != 0) {
-      prephase_.reset(num_in);
-      compute_prephase<T, DIM>(sign_, num_in, input_points, grid_info_.output_offsets,
-                               prephase_.data());
+      prephase_.reset(num_in, device_alloc_);
+
+      HostArray<std::complex<T>, 1> prephase_host(prephase_.shape());
+
+      HostArray<T, 2> input_array_host({num_in, DIM});
+      std::array<const T*, DIM> input_points_host;
+      for(IntType d = 0; d < DIM; ++d) {
+        memcopy(ConstDeviceView<T, 1>(input_points[d], num_in, 1), input_array_host.slice_view(d),
+                stream_);
+        input_points_host[d] = input_array_host.slice_view(d).data();
+      }
+      api::stream_synchronize(stream_);
+
+      neonufft::compute_prephase<T, DIM>(sign_, num_in, input_points_host,
+                                         grid_info_.output_offsets, prephase_host.data());
+      memcopy(prephase_host, prephase_, stream_);
+      api::stream_synchronize(stream_);
     }
 
     // first translate rescale for grid spacing adjustment, then scale points to
     // [0, 1]
-    std::array<T, DIM> input_scaling_factors;
+    StackArray<T, DIM> input_scaling_factors;
     for (IntType d = 0; d < DIM; ++d) {
       input_scaling_factors[d] = 1 / gam_[d];
     }
     if (rescaled_input_points_.shape(0) != num_in) {
-      rescaled_input_points_.reset(num_in);
+      rescaled_input_points_.reset(num_in, device_alloc_);
     }
 
-    // TODO partitioning
+    StackArray<ConstDeviceView<T, 1>, DIM> loc_views;
+    for(IntType d = 0; d <DIM; ++d) {
+      loc_views[d] = ConstDeviceView<T, 1>(input_points[d], num_in, 1);
+    }
+    rescale_and_permut_t3<T, DIM>(device_prop_, stream_, loc_views, fft_grid_.view().shape(),
+                                  grid_info_.input_offsets, input_scaling_factors, input_partition_,
+                                  rescaled_input_points_);
   }
 
   void set_output_points(IntType num_out, std::array<const T*, DIM> output_points) {
@@ -154,35 +177,61 @@ public:
       output_scaling_factors[d] = gam_[d] * spread_grid_spacing_[d];
     }
     if (rescaled_output_points_.shape(0) != num_out) {
-      rescaled_output_points_.reset(num_out);
+      rescaled_output_points_.reset(num_out, device_alloc_);
     }
 
-    const auto output_partition = rescale_loc_partition_t3<T, DIM>(
-        DIM - 1, 4 * th_pool_.num_threads(), num_out, grid_info_.output_offsets,
-        output_scaling_factors, output_points, rescaled_output_points_.data());
+    StackArray<ConstDeviceView<T, 1>, DIM> loc_views;
+    for(IntType d = 0; d <DIM; ++d) {
+      loc_views[d] = ConstDeviceView<T, 1>(output_points[d], num_out, 1);
+    }
 
+
+    // TODO: output partition not needed. Still sort for better caching?
+    IndexArray<DIM> output_partition_shape;
+    // output_partition_shape.fill(1);
+    output_partition_shape = input_partition_.shape();
+
+    DeviceArray<PartitionGroup, DIM> output_partition(output_partition_shape, device_alloc_);
+    rescale_and_permut_t3<T, DIM>(device_prop_, stream_, loc_views, fft_grid_.shape(),
+                                  grid_info_.output_offsets, output_scaling_factors,
+                                  output_partition, rescaled_output_points_);
 
     // compute postphase with correction factors
     {
-      HostArray<T, 1> phi_hat(num_out);
-      postphase_.reset(num_out);
-      nuft_real<T, DIM>(opt_.kernel_type, kernel_param_, num_out, output_points,
-                        grid_info_.output_offsets, output_scaling_factors, phi_hat.data());
+
+      HostArray<T, 2> output_array_host({num_out, DIM});
+      std::array<const T*, DIM> output_points_host;
+      for(IntType d = 0; d < DIM; ++d) {
+        memcopy(ConstDeviceView<T, 1>(output_points[d], num_out, 1),
+                output_array_host.slice_view(d), stream_);
+        output_points_host[d] = output_array_host.slice_view(d).data();
+      }
+      api::stream_synchronize(stream_);
+
+      HostArray<T, 1> phi_hat_host(num_out);
+      postphase_.reset(num_out, device_alloc_);
+      HostArray<std::complex<T>, 1> postphase_host(postphase_.shape());
+      neonufft::nuft_real<T, DIM>(opt_.kernel_type, kernel_param_, num_out, output_points_host,
+                                  grid_info_.output_offsets, output_scaling_factors,
+                                  phi_hat_host.data());
 
       if (grid_info_.input_offsets[0] != 0 ||
           grid_info_.input_offsets[std::min<IntType>(1, DIM - 1)] != 0 ||
           grid_info_.input_offsets[std::min<IntType>(2, DIM - 1)] != 0) {
-        compute_postphase<T, DIM>(sign_, num_out, phi_hat.data(), output_points,
+        neonufft::compute_postphase<T, DIM>(sign_, num_out, phi_hat_host.data(), output_points_host,
                                   grid_info_.input_offsets, grid_info_.output_offsets,
-                                  postphase_.data());
+                                  postphase_host.data());
       } else {
-        // just store inverse of phi_hat
-        const T* cf_ptr = phi_hat.data();
-        auto pp_ptr = postphase_.data();
+        // just store inverse of phi_hat_host
+        const T* cf_ptr = phi_hat_host.data();
+        auto pp_ptr = postphase_host.data();
         for (IntType i = 0; i < num_out; ++i) {
-          pp_ptr[i] = ComplexType<T>{1 / cf_ptr[i], 0};
+          pp_ptr[i] = std::complex<T>{1 / cf_ptr[i], 0};
         }
       }
+
+      memcopy(postphase_host, postphase_, stream_);
+      api::stream_synchronize(stream_);
     }
   }
 
@@ -194,50 +243,34 @@ public:
     // is always 0
     // fold_padding<T, DIM>(kernel_param_.n_spread, spread_grid_);
 
-    std::array<ConstHostView<T, 1>, DIM> correction_factor_views;
+    std::array<ConstDeviceView<T, 1>, DIM> correction_factor_views;
     for (IntType dim = 0; dim < DIM; ++dim) {
       correction_factor_views[dim] = correction_factors_[dim].view();
     }
 
-    const auto padding = spread_padding(kernel_param_.n_spread);
-    if constexpr (DIM == 1) {
-      upsample<T, DIM>(NEONUFFT_MODE_ORDER_CMCL,
-                       spread_grid_.sub_view(padding, grid_info_.spread_grid_size[0]),
-                       correction_factor_views, fft_grid_.view());
-    } else if constexpr (DIM == 2) {
-      upsample<T, DIM>(NEONUFFT_MODE_ORDER_CMCL,
-                       spread_grid_.sub_view({padding, padding}, {grid_info_.spread_grid_size[0],
-                                                                  grid_info_.spread_grid_size[1]}),
-                       correction_factor_views, fft_grid_.view());
-    } else {
-      upsample<T, DIM>(
-          NEONUFFT_MODE_ORDER_CMCL,
-          spread_grid_.sub_view({padding, padding, padding},
-                                {grid_info_.spread_grid_size[0], grid_info_.spread_grid_size[1],
-                                 grid_info_.spread_grid_size[2]}),
-          correction_factor_views, fft_grid_.view());
-    }
+    IndexArray<DIM> padding;
+    padding.fill(spread_padding(kernel_param_.n_spread));
+
+    gpu::upsample<T, DIM>(device_prop_, stream_, NEONUFFT_MODE_ORDER_CMCL,
+                          spread_grid_.sub_view(padding, grid_info_.spread_grid_size),
+                          correction_factor_views, fft_grid_.view());
+
 
     fft_grid_.transform();
 
-    interpolate<T, DIM>(opt_.kernel_type, kernel_param_, fft_grid_.view(),
-                        rescaled_output_points_.shape(0), rescaled_output_points_.data(), out);
-
-    // TODO: move to kernel. NOTE: integration into interpolate functions
-    // results in large performance hit with clang (18)
-    for (IntType i = 0; i < postphase_.shape(0); ++i) {
-      out[i] *= postphase_[i];
-    }
+    gpu::interpolation<T, DIM>(
+        device_prop_, stream_, kernel_param_, rescaled_output_points_, fft_grid_.view(), postphase_,
+        DeviceView<ComplexType<T>, 1>(out, rescaled_output_points_.size(), 1));
 
     // TODO: reset function
     //  Reset spread grid
-    spread_grid_.zero(stream_);
+    spread_grid_.view().zero(stream_);
   }
 
   void add_input(const ComplexType<T>* in) {
     ConstDeviceView<ComplexType<T>, 1> in_view(in, rescaled_input_points_.shape(0), 1);
-    gpu::spread<T, DIM>(device_prop_, stream_, kernel_param_, partition_, rescaled_input_points_,
-                        in_view, prephase_, fft_grid_.view());
+    gpu::spread<T, DIM>(device_prop_, stream_, kernel_param_, input_partition_, rescaled_input_points_,
+                        in_view, prephase_, spread_grid_);
   }
 
 private:
@@ -265,7 +298,7 @@ private:
         new_grid |= (spread_grid_.shape(d) != grid_info_.padded_spread_grid_size[d]);
       }
       if (new_grid) {
-        spread_grid_.reset(grid_info_.padded_spread_grid_size);
+        spread_grid_.reset(grid_info_.padded_spread_grid_size, device_alloc_);
       }
     }
 
@@ -280,7 +313,7 @@ private:
         new_grid |= (grid_info_.fft_grid_size[d] != fft_grid_.shape(d));
       }
       if (new_grid) {
-        fft_grid_ = FFTGrid<T, DIM>(device_alloc_, grid_info_.fft_grid_size, sign_);
+        fft_grid_ = FFTGrid<T, DIM>(device_alloc_, stream_, grid_info_.fft_grid_size, sign_);
       }
     }
 
@@ -290,15 +323,22 @@ private:
     for (std::size_t d = 0; d < DIM; ++d) {
       auto correction_fact_size = fft_grid_.shape(d) / 2 + 1;
       correction_factors_host[d].reset(correction_fact_size);
-      if (correction_factors_[d].shape(0) != correction_fact_size) {
-        correction_factors_[d].reset(correction_fact_size);
-      }
+      correction_factors_[d].reset(correction_fact_size, device_alloc_);
 
       contrib::onedim_fseries_kernel_inverse(fft_grid_.shape(d), correction_factors_host[d].data(),
                                              kernel_param_.n_spread, kernel_param_.es_halfwidth,
                                              kernel_param_.es_beta, kernel_param_.es_c);
       memcopy(correction_factors_host[d], correction_factors_[d], stream_);
     }
+
+    // resize partition grid
+    typename decltype(input_partition_)::IndexType part_grid_size;
+    for (std::size_t d = 0; d < DIM; ++d) {
+      part_grid_size[d] =
+          (spread_grid_.shape(d) + gpu::PartitionGroup::width - 1) / PartitionGroup::width;
+    }
+    input_partition_.reset(part_grid_size, device_alloc_);
+
     api::stream_synchronize(stream_);
   }
 
@@ -318,7 +358,7 @@ private:
   DeviceArray<ComplexType<T>, DIM> spread_grid_;
   std::array<T, DIM> gam_;
   std::array<T, DIM> spread_grid_spacing_;
-  DeviceArray<PartitionGroup, DIM> partition_;
+  DeviceArray<PartitionGroup, DIM> input_partition_;
 };
 
 // TODO remove

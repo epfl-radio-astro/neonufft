@@ -15,15 +15,10 @@
 #include "neonufft/gpu/util/runtime_api.hpp"
 #include "neonufft/util/math.hpp"
 #include "neonufft/util/point.hpp"
+#include "neonufft/util/stack_array.hpp"
 
 namespace neonufft {
 namespace gpu {
-
-
-template<typename T, IntType DIM>
-struct StackArray {
-  T values[DIM];
-};
 
 template <typename T, IntType DIM, int BLOCK_SIZE>
 __global__ static void __launch_bounds__(BLOCK_SIZE)
@@ -32,19 +27,47 @@ __global__ static void __launch_bounds__(BLOCK_SIZE)
   constexpr T two_pi = 2 * math::pi<T>;
   constexpr T two_pi_inv = 1 / (2 * math::pi<T>);
 
-  for (IntType idx = threadIdx.x + blockIdx.x * BLOCK_SIZE; idx < loc.values[0].size();
+  for (IntType idx = threadIdx.x + blockIdx.x * BLOCK_SIZE; idx < loc[0].size();
        idx += gridDim.x * BLOCK_SIZE) {
     T l[DIM];
     IndexArray<DIM> idx_part;
     for (IntType d = 0; d < DIM; ++d) {
-      l[d] = (loc.values[d][idx] + math::pi<T>)*two_pi_inv;
+      l[d] = (loc[d][idx] + math::pi<T>)*two_pi_inv;
       if constexpr (std::is_same_v<T, float>) {
         l[d] = l[d] - floorf(l[d]);
       } else {
         l[d] = l[d] - floor(l[d]);
       }
-      idx_part.values[d] = IntType(l[d] * grid_size.values[d]) / PartitionGroup::width;
-      idx_part.values[d] = min(idx_part.values[d], partition.shape(d) - 1);
+      idx_part[d] = IntType(l[d] * grid_size[d]) / PartitionGroup::width;
+      idx_part[d] = min(idx_part[d], partition.shape(d) - 1);
+    }
+
+    atomicAdd(&(partition[idx_part].size), 1);
+  }
+}
+template <typename T, IntType DIM, int BLOCK_SIZE>
+__global__ static void __launch_bounds__(BLOCK_SIZE)
+    compute_part_sizes_t3_kernel(StackArray<ConstDeviceView<T, 1>, DIM> loc,
+                                 IndexArray<DIM> grid_size, StackArray<T, DIM> offset,
+                                 StackArray<T, DIM> scaling_factor,
+                                 DeviceView<PartitionGroup, DIM> partition) {
+  constexpr T two_pi = 2 * math::pi<T>;
+  constexpr T two_pi_inv = 1 / (2 * math::pi<T>);
+
+  for (IntType idx = threadIdx.x + blockIdx.x * BLOCK_SIZE; idx < loc[0].size();
+       idx += gridDim.x * BLOCK_SIZE) {
+    T l[DIM];
+    IndexArray<DIM> idx_part;
+    for (IntType d = 0; d < DIM; ++d) {
+      l[d] = (loc[d][idx] - offset[d]) * scaling_factor[d];
+      l[d] = (l[d] + math::pi<T>)*two_pi_inv;
+      if constexpr (std::is_same_v<T, float>) {
+        l[d] = l[d] - floorf(l[d]);
+      } else {
+        l[d] = l[d] - floor(l[d]);
+      }
+      idx_part[d] = IntType(l[d] * grid_size[d]) / PartitionGroup::width;
+      idx_part[d] = min(idx_part[d], partition.shape(d) - 1);
     }
 
     atomicAdd(&(partition[idx_part].size), 1);
@@ -73,121 +96,70 @@ __global__ static void compute_part_offsets_kernel(DeviceView<PartitionGroup, 1>
   }
 }
 
-template <typename T, int BLOCK_SIZE>
+template <typename T, IntType DIM, int BLOCK_SIZE>
 __global__ static void __launch_bounds__(BLOCK_SIZE)
-    rescale_and_permut_1d_kernel(ConstDeviceView<T, 1> loc, IntType grid_size,
-                                 DeviceView<PartitionGroup, 1> partition,
-                                 DeviceView<Point<T, 1>, 1> points) {
+    rescale_and_permut_kernel(StackArray<ConstDeviceView<T, 1>, DIM> loc, IndexArray<DIM> grid_size,
+                              DeviceView<PartitionGroup, DIM> partition,
+                              DeviceView<Point<T, DIM>, 1> points) {
   constexpr T two_pi = 2 * math::pi<T>;
   constexpr T two_pi_inv = 1 / (2 * math::pi<T>);
 
-  for (IntType idx = threadIdx.x + blockIdx.x * BLOCK_SIZE; idx < loc.size();
+  for (IntType idx = threadIdx.x + blockIdx.x * BLOCK_SIZE; idx < loc[0].size();
        idx += gridDim.x * BLOCK_SIZE) {
-    auto l = (loc[idx] + math::pi<T>)*two_pi_inv;
-    if constexpr (std::is_same_v<T, float>) {
-      l = l - floorf(l);
-    } else {
-      l = l - floor(l);
+    Point<T, DIM> p;
+    p.index = idx;
+    IndexArray<DIM> idx_part;
+    for (IntType d = 0; d < DIM; ++d) {
+      p.coord[d] = (loc[d][idx] + math::pi<T>)*two_pi_inv;
+      if constexpr (std::is_same_v<T, float>) {
+        p.coord[d] = p.coord[d] - floorf(p.coord[d]);
+      } else {
+        p.coord[d] = p.coord[d] - floor(p.coord[d]);
+      }
+      idx_part[d] = IntType(p.coord[d] * grid_size[d]) / PartitionGroup::width;
+      idx_part[d] = min(idx_part[d], partition.shape(d) - 1);
     }
 
-    IntType idx_part = IntType(l * grid_size) / PartitionGroup::width;
-    idx_part = min(idx_part, partition.shape(0) - 1);
     const auto local_offset = atomicAdd(&(partition[idx_part].size), 1);
-
-    Point<T, 1> p;
-    p.coord[0] = l;
-    p.index = idx;
-
     points[partition[idx_part].begin + local_offset] = p;
   }
 }
 
-template <typename T, int BLOCK_SIZE>
+template <typename T, IntType DIM, int BLOCK_SIZE>
 __global__ static void __launch_bounds__(BLOCK_SIZE)
-    rescale_and_permut_2d_kernel(ConstDeviceView<T, 1> loc_x, ConstDeviceView<T, 1> loc_y,
-                                 IntType grid_size_x, IntType grid_size_y,
-                                 DeviceView<PartitionGroup, 2> partition,
-                                 DeviceView<Point<T, 2>, 1> points) {
+    rescale_and_permut_t3_kernel(StackArray<ConstDeviceView<T, 1>, DIM> loc, IndexArray<DIM> grid_size,
+                              StackArray<T, DIM> offset, StackArray<T, DIM> scaling_factor,
+                              DeviceView<PartitionGroup, DIM> partition,
+                              DeviceView<Point<T, DIM>, 1> points) {
   constexpr T two_pi = 2 * math::pi<T>;
   constexpr T two_pi_inv = 1 / (2 * math::pi<T>);
 
-  for (IntType idx = threadIdx.x + blockIdx.x * BLOCK_SIZE; idx < loc_x.size();
+  for (IntType idx = threadIdx.x + blockIdx.x * BLOCK_SIZE; idx < loc[0].size();
        idx += gridDim.x * BLOCK_SIZE) {
-    auto l_x = (loc_x[idx] + math::pi<T>)*two_pi_inv;
-    auto l_y = (loc_y[idx] + math::pi<T>)*two_pi_inv;
-    if constexpr (std::is_same_v<T, float>) {
-      l_x = l_x - floorf(l_x);
-      l_y = l_y - floorf(l_y);
-    } else {
-      l_x = l_x - floor(l_x);
-      l_y = l_y - floor(l_y);
+    Point<T, DIM> p;
+    p.index = idx;
+    IndexArray<DIM> idx_part;
+    for (IntType d = 0; d < DIM; ++d) {
+      p.coord[d] = (loc[d][idx] - offset[d]) * scaling_factor[d];
+      p.coord[d] = (p.coord[d] + math::pi<T>)*two_pi_inv;
+      if constexpr (std::is_same_v<T, float>) {
+        p.coord[d] = p.coord[d] - floorf(p.coord[d]);
+      } else {
+        p.coord[d] = p.coord[d] - floor(p.coord[d]);
+      }
+      idx_part[d] = IntType(p.coord[d] * grid_size[d]) / PartitionGroup::width;
+      idx_part[d] = min(idx_part[d], partition.shape(d) - 1);
     }
 
-    IntType idx_part_x = IntType(l_x * grid_size_x) / PartitionGroup::width;
-    IntType idx_part_y = IntType(l_y * grid_size_y) / PartitionGroup::width;
-    idx_part_x = min(idx_part_x, partition.shape(0) - 1);
-    idx_part_y = min(idx_part_y, partition.shape(1) - 1);
-
-    const auto local_offset = atomicAdd(&(partition[{idx_part_x, idx_part_y}].size), 1);
-
-    Point<T, 2> p;
-    p.coord[0] = l_x;
-    p.coord[1] = l_y;
-    p.index = idx;
-
-    points[partition[{idx_part_x, idx_part_y}].begin + local_offset] = p;
-  }
-}
-
-template <typename T, int BLOCK_SIZE>
-__global__ static void __launch_bounds__(BLOCK_SIZE)
-    rescale_and_permut_3d_kernel(ConstDeviceView<T, 1> loc_x, ConstDeviceView<T, 1> loc_y,
-                                 ConstDeviceView<T, 1> loc_z, IntType grid_size_x,
-                                 IntType grid_size_y, IntType grid_size_z,
-                                 DeviceView<PartitionGroup, 3> partition,
-                                 DeviceView<Point<T, 3>, 1> points) {
-  constexpr T two_pi = 2 * math::pi<T>;
-  constexpr T two_pi_inv = 1 / (2 * math::pi<T>);
-
-  for (IntType idx = threadIdx.x + blockIdx.x * BLOCK_SIZE; idx < loc_x.size();
-       idx += gridDim.x * BLOCK_SIZE) {
-    auto l_x = (loc_x[idx] + math::pi<T>)*two_pi_inv;
-    auto l_y = (loc_y[idx] + math::pi<T>)*two_pi_inv;
-    auto l_z = (loc_z[idx] + math::pi<T>)*two_pi_inv;
-    if constexpr (std::is_same_v<T, float>) {
-      l_x = l_x - floorf(l_x);
-      l_y = l_y - floorf(l_y);
-      l_z = l_z - floorf(l_z);
-    } else {
-      l_x = l_x - floor(l_x);
-      l_y = l_y - floor(l_y);
-      l_z = l_z - floor(l_z);
-    }
-
-    IntType idx_part_x = IntType(l_x * grid_size_x) / PartitionGroup::width;
-    IntType idx_part_y = IntType(l_y * grid_size_y) / PartitionGroup::width;
-    IntType idx_part_z = IntType(l_z * grid_size_z) / PartitionGroup::width;
-
-    idx_part_x = min(idx_part_x, partition.shape(0) - 1);
-    idx_part_y = min(idx_part_y, partition.shape(1) - 1);
-    idx_part_z = min(idx_part_z, partition.shape(2) - 1);
-
-    const auto local_offset = atomicAdd(&(partition[{idx_part_x, idx_part_y, idx_part_z}].size), 1);
-
-    Point<T, 3> p;
-    p.coord[0] = l_x;
-    p.coord[1] = l_y;
-    p.coord[2] = l_z;
-    p.index = idx;
-
-    points[partition[{idx_part_x, idx_part_y, idx_part_z}].begin + local_offset] = p;
+    const auto local_offset = atomicAdd(&(partition[idx_part].size), 1);
+    points[partition[idx_part].begin + local_offset] = p;
   }
 }
 
 template <typename T, IntType DIM>
 auto rescale_and_permut(const api::DevicePropType& prop, const api::StreamType& stream,
-                        std::array<ConstDeviceView<T, 1>, DIM> loc,
-                        std::array<IntType, DIM> grid_size,
+                        StackArray<ConstDeviceView<T, 1>, DIM> loc,
+                        IndexArray<DIM> grid_size,
                         DeviceView<PartitionGroup, DIM> partition,
                         DeviceView<Point<T, DIM>, 1> points) -> void {
   assert(loc[0].size() == points.size());
@@ -198,86 +170,133 @@ auto rescale_and_permut(const api::DevicePropType& prop, const api::StreamType& 
 
   partition.zero(stream);
 
-  if constexpr (DIM == 1) {
-    // api::launch_kernel(compute_part_sizes_1d_kernel<T, block_size>, grid, block, 0, stream, loc[0],
-    //                    grid_size[0], partition);
-    api::launch_kernel(compute_part_sizes_kernel<T, 1, block_size>, grid, block, 0, stream,
-                       StackArray<ConstDeviceView<T, 1>, DIM>{loc[0]}, IndexArray<DIM>{grid_size[0]}, partition);
+  api::launch_kernel(compute_part_sizes_kernel<T, DIM, block_size>, grid, block, 0, stream, loc,
+                     grid_size, partition);
 
-    api::launch_kernel(compute_part_offsets_kernel<T>, dim3{1, 1, 1},
-                       dim3(prop.maxThreadsDim[0], 1, 1), 0, stream, partition);
+  assert(partition.is_contiguous());
+  api::launch_kernel(compute_part_offsets_kernel<T>, dim3{1, 1, 1},
+                     dim3(prop.maxThreadsDim[0], 1, 1), 0, stream,
+                     DeviceView<PartitionGroup, 1>(partition.data(), partition.size(), 1));
 
-    api::launch_kernel(rescale_and_permut_1d_kernel<T, block_size>, grid, block, 0, stream, loc[0],
-                       grid_size[0], partition, points);
+  api::launch_kernel(rescale_and_permut_kernel<T, DIM, block_size>, grid, block, 0, stream, loc,
+                     grid_size, partition, points);
+}
 
-  } else if constexpr (DIM == 2) {
-    api::launch_kernel(compute_part_sizes_kernel<T, 2, block_size>, grid, block, 0, stream,
-                       StackArray<ConstDeviceView<T, 1>, DIM>{loc[0], loc[1]},
-                       IndexArray<DIM>{grid_size[0], grid_size[1]}, partition);
+template <typename T, IntType DIM>
+auto rescale_and_permut_t3(const api::DevicePropType& prop, const api::StreamType& stream,
+                           StackArray<ConstDeviceView<T, 1>, DIM> loc, IndexArray<DIM> grid_size,
+                           StackArray<T, DIM> offset, StackArray<T, DIM> scaling_factor,
+                           DeviceView<PartitionGroup, DIM> partition,
+                           DeviceView<Point<T, DIM>, 1> points) -> void {
+  assert(loc[0].size() == points.size());
+  assert(partition.is_contiguous());
+  constexpr int block_size = 512;
+  const dim3 block(std::min<int>(block_size, prop.maxThreadsDim[0]), 1, 1);
+  const auto grid = kernel_launch_grid(prop, {points.size(), 1, 1}, block);
 
-    api::launch_kernel(compute_part_offsets_kernel<T>, dim3{1, 1, 1}, dim3(prop.maxThreadsDim[0], 1, 1), 0, stream,
-                       DeviceView<PartitionGroup, 1>(partition.data(), partition.size(), 1));
+  partition.zero(stream);
 
-    api::launch_kernel(rescale_and_permut_2d_kernel<T, block_size>, grid, block, 0, stream, loc[0],
-                       loc[1], grid_size[0], grid_size[1], partition, points);
+  api::launch_kernel(compute_part_sizes_t3_kernel<T, DIM, block_size>, grid, block, 0, stream, loc,
+                     grid_size, offset, scaling_factor, partition);
 
-  } else if constexpr (DIM == 3) {
-    api::launch_kernel(compute_part_sizes_kernel<T, 3, block_size>, grid, block, 0, stream,
-                       StackArray<ConstDeviceView<T, 1>, DIM>{loc[0], loc[1], loc[2]},
-                       IndexArray<DIM>{grid_size[0], grid_size[1], grid_size[2]}, partition);
+  assert(partition.is_contiguous());
+  api::launch_kernel(compute_part_offsets_kernel<T>, dim3{1, 1, 1},
+                     dim3(prop.maxThreadsDim[0], 1, 1), 0, stream,
+                     DeviceView<PartitionGroup, 1>(partition.data(), partition.size(), 1));
 
-    api::launch_kernel(compute_part_offsets_kernel<T>, dim3{1, 1, 1},
-                       dim3(prop.maxThreadsDim[0], 1, 1), 0, stream,
-                       DeviceView<PartitionGroup, 1>(partition.data(), partition.size(), 1));
-
-    api::launch_kernel(rescale_and_permut_3d_kernel<T, block_size>, grid, block, 0, stream, loc[0],
-                       loc[1], loc[2], grid_size[0], grid_size[1], grid_size[2], partition, points);
-  } else {
-    throw InternalError("invalid dimension");
-  }
+  api::launch_kernel(rescale_and_permut_t3_kernel<T, DIM, block_size>, grid, block, 0, stream, loc,
+                     grid_size, offset,scaling_factor, partition, points);
 }
 
 template auto rescale_and_permut<float, 1>(const api::DevicePropType& prop,
                                            const api::StreamType& stream,
-                                           std::array<ConstDeviceView<float, 1>, 1> loc,
-                                           std::array<IntType, 1> grid_size,
+                                           StackArray<ConstDeviceView<float, 1>, 1> loc,
+                                           IndexArray<1> grid_size,
                                            DeviceView<PartitionGroup, 1> partition,
                                            DeviceView<Point<float, 1>, 1> points) -> void;
 
 template auto rescale_and_permut<float, 2>(const api::DevicePropType& prop,
                                            const api::StreamType& stream,
-                                           std::array<ConstDeviceView<float, 1>, 2> loc,
-                                           std::array<IntType, 2> grid_size,
+                                           StackArray<ConstDeviceView<float, 1>, 2> loc,
+                                           IndexArray<2> grid_size,
                                            DeviceView<PartitionGroup, 2> partition,
                                            DeviceView<Point<float, 2>, 1> points) -> void;
 
 template auto rescale_and_permut<float, 3>(const api::DevicePropType& prop,
                                            const api::StreamType& stream,
-                                           std::array<ConstDeviceView<float, 1>, 3> loc,
-                                           std::array<IntType, 3> grid_size,
+                                           StackArray<ConstDeviceView<float, 1>, 3> loc,
+                                           IndexArray<3> grid_size,
                                            DeviceView<PartitionGroup, 3> partition,
                                            DeviceView<Point<float, 3>, 1> points) -> void;
 
 template auto rescale_and_permut<double, 1>(const api::DevicePropType& prop,
                                             const api::StreamType& stream,
-                                            std::array<ConstDeviceView<double, 1>, 1> loc,
-                                            std::array<IntType, 1> grid_size,
+                                            StackArray<ConstDeviceView<double, 1>, 1> loc,
+                                            IndexArray<1> grid_size,
                                             DeviceView<PartitionGroup, 1> partition,
                                             DeviceView<Point<double, 1>, 1> points) -> void;
 
 template auto rescale_and_permut<double, 2>(const api::DevicePropType& prop,
                                             const api::StreamType& stream,
-                                            std::array<ConstDeviceView<double, 1>, 2> loc,
-                                            std::array<IntType, 2> grid_size,
+                                            StackArray<ConstDeviceView<double, 1>, 2> loc,
+                                            IndexArray<2> grid_size,
                                             DeviceView<PartitionGroup, 2> partition,
                                             DeviceView<Point<double, 2>, 1> points) -> void;
 
 template auto rescale_and_permut<double, 3>(const api::DevicePropType& prop,
                                             const api::StreamType& stream,
-                                            std::array<ConstDeviceView<double, 1>, 3> loc,
-                                            std::array<IntType, 3> grid_size,
+                                            StackArray<ConstDeviceView<double, 1>, 3> loc,
+                                            IndexArray<3> grid_size,
                                             DeviceView<PartitionGroup, 3> partition,
                                             DeviceView<Point<double, 3>, 1> points) -> void;
+
+template auto rescale_and_permut_t3<float, 1>(const api::DevicePropType& prop,
+                                              const api::StreamType& stream,
+                                              StackArray<ConstDeviceView<float, 1>, 1> loc,
+                                              IndexArray<1> grid_size, StackArray<float, 1> offset,
+                                              StackArray<float, 1> scaling_factor,
+                                              DeviceView<PartitionGroup, 1> partition,
+                                              DeviceView<Point<float, 1>, 1> points) -> void;
+
+template auto rescale_and_permut_t3<float, 2>(const api::DevicePropType& prop,
+                                              const api::StreamType& stream,
+                                              StackArray<ConstDeviceView<float, 1>, 2> loc,
+                                              IndexArray<2> grid_size, StackArray<float, 2> offset,
+                                              StackArray<float, 2> scaling_factor,
+                                              DeviceView<PartitionGroup, 2> partition,
+                                              DeviceView<Point<float, 2>, 1> points) -> void;
+
+template auto rescale_and_permut_t3<float, 3>(const api::DevicePropType& prop,
+                                              const api::StreamType& stream,
+                                              StackArray<ConstDeviceView<float, 1>, 3> loc,
+                                              IndexArray<3> grid_size, StackArray<float, 3> offset,
+                                              StackArray<float, 3> scaling_factor,
+                                              DeviceView<PartitionGroup, 3> partition,
+                                              DeviceView<Point<float, 3>, 1> points) -> void;
+
+template auto rescale_and_permut_t3<double, 1>(const api::DevicePropType& prop,
+                                              const api::StreamType& stream,
+                                              StackArray<ConstDeviceView<double, 1>, 1> loc,
+                                              IndexArray<1> grid_size, StackArray<double, 1> offset,
+                                              StackArray<double, 1> scaling_factor,
+                                              DeviceView<PartitionGroup, 1> partition,
+                                              DeviceView<Point<double, 1>, 1> points) -> void;
+
+template auto rescale_and_permut_t3<double, 2>(const api::DevicePropType& prop,
+                                              const api::StreamType& stream,
+                                              StackArray<ConstDeviceView<double, 1>, 2> loc,
+                                              IndexArray<2> grid_size, StackArray<double, 2> offset,
+                                              StackArray<double, 2> scaling_factor,
+                                              DeviceView<PartitionGroup, 2> partition,
+                                              DeviceView<Point<double, 2>, 1> points) -> void;
+
+template auto rescale_and_permut_t3<double, 3>(const api::DevicePropType& prop,
+                                              const api::StreamType& stream,
+                                              StackArray<ConstDeviceView<double, 1>, 3> loc,
+                                              IndexArray<3> grid_size, StackArray<double, 3> offset,
+                                              StackArray<double, 3> scaling_factor,
+                                              DeviceView<PartitionGroup, 3> partition,
+                                              DeviceView<Point<double, 3>, 1> points) -> void;
 
 }  // namespace gpu
 }  // namespace neonufft

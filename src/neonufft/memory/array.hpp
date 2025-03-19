@@ -47,7 +47,7 @@ public:
 
   using ValueType = T;
   using IndexType = IndexArray<DIM>;
-  using SliceType = HostArray<T, DIM - 1>;
+  using SliceType = HostView<T, DIM - 1>;
 
   static inline constexpr IntType dimension = DIM;
 
@@ -127,7 +127,7 @@ public:
   inline auto strides(IntType i) const noexcept -> IntType { return v_.strides(i); }
 
   inline auto slice_view(IntType outer_index) const -> SliceType {
-    return SliceType(v_.slice_view(outer_index));
+    return v_.slice_view(outer_index);
   }
 
   inline auto sub_view(const IndexType& offset, const IndexType& shape) const -> HostView<T, DIM> {

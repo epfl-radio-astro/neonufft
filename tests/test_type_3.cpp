@@ -1,8 +1,10 @@
 #include <algorithm>
 #include <array>
 #include <complex>
+#include <memory>
 #include <random>
 #include <tuple>
+#include <type_traits>
 #include <vector>
 #include <cmath>
 
@@ -16,15 +18,29 @@
 #include "neonufft/util/math.hpp"
 #include "nuft_direct_kernels.hpp"
 
+#if defined(NEONUFFT_CUDA) || defined(NEONUFFT_ROCM)
+#include "neonufft/gpu/memory/copy.hpp"
+#include "neonufft/gpu/memory/device_array.hpp"
+#include "neonufft/memory/view.hpp"
+#include "neonufft/gpu/device_allocator.hpp"
+#include "neonufft/gpu/plan.hpp"
+#include "neonufft/gpu/types.hpp"
+#endif
+
 using namespace neonufft;
 
 namespace {
 
 struct Type3TestParam {
- using TupleType = std::tuple<IntType, IntType, IntType, double, double, int>;
- Type3TestParam(const TupleType &t)
-     : dim(std::get<0>(t)), num_in(std::get<1>(t)), num_out(std::get<2>(t)),
-       upsampfac(std::get<3>(t)), tol(std::get<4>(t)), sign(std::get<5>(t)) {}
+ using TupleType = std::tuple<IntType, IntType, IntType, double, double, int, bool>;
+ Type3TestParam(const TupleType& t)
+     : dim(std::get<0>(t)),
+       num_in(std::get<1>(t)),
+       num_out(std::get<2>(t)),
+       upsampfac(std::get<3>(t)),
+       tol(std::get<4>(t)),
+       sign(std::get<5>(t)),
+       use_gpu(std::get<6>(t)) {}
 
  IntType dim;
  IntType num_in;
@@ -32,6 +48,7 @@ struct Type3TestParam {
  double upsampfac;
  double tol;
  int sign;
+ bool use_gpu;
 };
 
 template <typename T, typename GEN>
@@ -55,11 +72,9 @@ std::vector<std::complex<T>> rand_vec_cpx(GEN &&rand_gen, IntType num, T min, T 
 }
 
 template <typename T>
-void compare_t3(int sign, double upsampfac, double tol, IntType num_in,
-                const T *in_points_x, const T *in_points_y,
-                const T *in_points_z, IntType num_out, const T *out_points_x,
-                const T *out_points_y, const T *out_points_z) {
-
+void compare_t3(bool use_gpu, int sign, double upsampfac, double tol, IntType num_in,
+                const T* in_points_x, const T* in_points_y, const T* in_points_z, IntType num_out,
+                const T* out_points_x, const T* out_points_y, const T* out_points_z) {
   Options opt;
   opt.upsampfac = upsampfac;
   opt.tol = tol;
@@ -73,38 +88,113 @@ void compare_t3(int sign, double upsampfac, double tol, IntType num_in,
 
   if (!in_points_y) {
     // DIM == 1
-    PlanT3<T, 1> plan(opt, sign, num_in, {in_points_x}, num_out,
-                      {out_points_x});
-    plan.add_input(input.data());
-    plan.transform(output.data());
-
-    // ref::transform_t3<T, 1>(sign, num_in, {in_points_x}, input.data(),
-    //                         num_out, {out_points_x}, output_ref.data());
     test::nuft_direct_t3<T, 1>(sign, num_in, {in_points_x}, input.data(), num_out, {out_points_x},
                                output_ref.data());
 
   } else if (!in_points_z) {
     // DIM == 2
-
-    PlanT3<T, 2> plan(opt, sign, num_in, {in_points_x, in_points_y},
-                      num_out, {out_points_x, out_points_y});
-    plan.add_input(input.data());
-    plan.transform(output.data());
-
     test::nuft_direct_t3<T, 2>(sign, num_in, {in_points_x, in_points_y}, input.data(), num_out,
                                {out_points_x, out_points_y}, output_ref.data());
   } else {
     // DIM == 3
-
-    PlanT3<T, 3> plan(opt, sign, num_in,
-                      {in_points_x, in_points_y, in_points_z}, num_out,
-                      {out_points_x, out_points_y, out_points_z});
-    plan.add_input(input.data());
-    plan.transform(output.data());
-
     test::nuft_direct_t3<T, 3>(sign, num_in, {in_points_x, in_points_y, in_points_z}, input.data(),
                                num_out, {out_points_x, out_points_y, out_points_z},
                                output_ref.data());
+  }
+
+
+  if(!use_gpu) {
+    if (!in_points_y) {
+      // DIM == 1
+      PlanT3<T, 1> plan(opt, sign, num_in, {in_points_x}, num_out, {out_points_x});
+      plan.add_input(input.data());
+      plan.transform(output.data());
+
+    } else if (!in_points_z) {
+      // DIM == 2
+
+      PlanT3<T, 2> plan(opt, sign, num_in, {in_points_x, in_points_y}, num_out,
+                        {out_points_x, out_points_y});
+      plan.add_input(input.data());
+      plan.transform(output.data());
+
+    } else {
+      // DIM == 3
+
+      PlanT3<T, 3> plan(opt, sign, num_in, {in_points_x, in_points_y, in_points_z}, num_out,
+                        {out_points_x, out_points_y, out_points_z});
+      plan.add_input(input.data());
+      plan.transform(output.data());
+    }
+  } else {
+#if defined(NEONUFFT_CUDA) || defined(NEONUFFT_ROCM)
+    gpu::StreamType stream = nullptr;
+    std::shared_ptr<Allocator> device_alloc(new gpu::DeviceAllocator());
+
+    gpu::DeviceArray<gpu::ComplexType<T>, 1> input_device(input.size(), device_alloc);
+    gpu::DeviceArray<gpu::ComplexType<T>, 1> output_device(output.size(), device_alloc);
+    gpu::DeviceArray<T, 2> in_points_device({input_device.size(), 3}, device_alloc);
+    gpu::DeviceArray<T, 2> out_points_device({output_device.size(), 3}, device_alloc);
+
+    gpu::memcopy(ConstHostView<std::complex<T>, 1>(input.data(), input.size(), 1), input_device,
+                 stream);
+    gpu::memcopy(ConstHostView<T, 1>(in_points_x, input.size(), 1), in_points_device.slice_view(0),
+            stream);
+    gpu::memcopy(ConstHostView<T, 1>(out_points_x, output.size(), 1), out_points_device.slice_view(0),
+            stream);
+
+    if (!in_points_y) {
+      // DIM == 1
+
+      gpu::PlanT3<T, 1> plan(opt, sign, num_in, {in_points_device.slice_view(0).data()}, num_out,
+                             {out_points_device.slice_view(0).data()}, stream);
+      plan.add_input(input_device.data());
+      plan.transform(output_device.data());
+
+    } else if (!in_points_z) {
+      // DIM == 2
+      gpu::memcopy(ConstHostView<T, 1>(in_points_y, input.size(), 1),
+                   in_points_device.slice_view(1), stream);
+      gpu::memcopy(ConstHostView<T, 1>(out_points_y, output.size(), 1),
+                   out_points_device.slice_view(1), stream);
+
+      gpu::PlanT3<T, 2> plan(
+          opt, sign, num_in,
+          {in_points_device.slice_view(0).data(), in_points_device.slice_view(1).data()}, num_out,
+          {out_points_device.slice_view(0).data(), out_points_device.slice_view(1).data()}, stream);
+      plan.add_input(input_device.data());
+      plan.transform(output_device.data());
+
+    } else {
+      // DIM == 3
+
+      gpu::memcopy(ConstHostView<T, 1>(in_points_y, input.size(), 1),
+                   in_points_device.slice_view(1), stream);
+      gpu::memcopy(ConstHostView<T, 1>(in_points_z, input.size(), 1),
+                   in_points_device.slice_view(2), stream);
+      gpu::memcopy(ConstHostView<T, 1>(out_points_y, output.size(), 1),
+                   out_points_device.slice_view(1), stream);
+      gpu::memcopy(ConstHostView<T, 1>(out_points_z, output.size(), 1),
+                   out_points_device.slice_view(2), stream);
+      gpu::PlanT3<T, 3> plan(
+          opt, sign, num_in,
+          {in_points_device.slice_view(0).data(), in_points_device.slice_view(1).data(),
+           in_points_device.slice_view(2).data()},
+          num_out,
+          {out_points_device.slice_view(0).data(), out_points_device.slice_view(1).data(),
+           out_points_device.slice_view(2).data()},
+          stream);
+      plan.add_input(input_device.data());
+      plan.transform(output_device.data());
+    }
+
+    gpu::memcopy(output_device, HostView<std::complex<T>, 1>(output.data(), output.size(), 1),
+                 stream);
+
+    gpu::api::stream_synchronize(stream);
+#else
+    ASSERT_TRUE(false);
+#endif
   }
 
   IntType count_below_tol = 0;
@@ -138,39 +228,35 @@ void compare_t3(int sign, double upsampfac, double tol, IntType num_in,
 } // namespace
 
 template <typename T>
-class Type3Test
-    : public ::testing::TestWithParam<Type3TestParam::TupleType> {
+class Type3Test : public ::testing::TestWithParam<Type3TestParam::TupleType> {
 public:
- void test_random() {
-   Type3TestParam param(GetParam());
-   std::minstd_rand rand_gen(42);
+  void test_random() {
+    Type3TestParam param(GetParam());
+    std::minstd_rand rand_gen(42);
 
-   auto in_points_x = rand_vec<T>(rand_gen, param.num_in, 20, 30);
-   auto out_points_x = rand_vec<T>(rand_gen, param.num_out, 20, 30);
-   if (param.dim == 1) {
-     compare_t3<T>(param.sign, param.upsampfac, param.tol, param.num_in,
-                in_points_x.data(), nullptr, nullptr, param.num_out,
-                out_points_x.data(), nullptr, nullptr);
-   } else {
+    auto in_points_x = rand_vec<T>(rand_gen, param.num_in, 20, 30);
+    auto out_points_x = rand_vec<T>(rand_gen, param.num_out, 20, 30);
+    if (param.dim == 1) {
+      compare_t3<T>(param.use_gpu, param.sign, param.upsampfac, param.tol, param.num_in,
+                    in_points_x.data(), nullptr, nullptr, param.num_out, out_points_x.data(),
+                    nullptr, nullptr);
+    } else {
+      auto in_points_y = rand_vec<T>(rand_gen, param.num_in, -20, 20);
+      auto out_points_y = rand_vec<T>(rand_gen, param.num_out, -20, 20);
 
-     auto in_points_y = rand_vec<T>(rand_gen, param.num_in, -20, 20);
-     auto out_points_y = rand_vec<T>(rand_gen, param.num_out, -20, 20);
-
-     if (param.dim == 2) {
-       compare_t3<T>(param.sign, param.upsampfac, param.tol, param.num_in,
-               in_points_x.data(), in_points_y.data(), nullptr, param.num_out,
-               out_points_x.data(), out_points_y.data(), nullptr);
-     } else {
-       auto in_points_z = rand_vec<T>(rand_gen, param.num_in, -20, -15);
-       auto out_points_z = rand_vec<T>(rand_gen, param.num_out, -20, -15);
-       compare_t3<T>(param.sign, param.upsampfac, param.tol, param.num_in,
-                     in_points_x.data(), in_points_y.data(), in_points_z.data(),
-                     param.num_out, out_points_x.data(), out_points_y.data(),
-                     out_points_z.data());
-     }
-   }
- }
-
+      if (param.dim == 2) {
+        compare_t3<T>(param.use_gpu, param.sign, param.upsampfac, param.tol, param.num_in,
+                      in_points_x.data(), in_points_y.data(), nullptr, param.num_out,
+                      out_points_x.data(), out_points_y.data(), nullptr);
+      } else {
+        auto in_points_z = rand_vec<T>(rand_gen, param.num_in, -20, -15);
+        auto out_points_z = rand_vec<T>(rand_gen, param.num_out, -20, -15);
+        compare_t3<T>(param.use_gpu, param.sign, param.upsampfac, param.tol, param.num_in,
+                      in_points_x.data(), in_points_y.data(), in_points_z.data(), param.num_out,
+                      out_points_x.data(), out_points_y.data(), out_points_z.data());
+      }
+    }
+  }
 };
 
 using Type3TestFloat = Type3Test<float>;
@@ -183,9 +269,8 @@ TEST_P(Type3TestDouble, transform) { test_random(); }
 
 TEST(Type3TestEdges, d1) {
   std::array<double, 2> points_x = {-math::pi<double>, math::pi<double>};
-  compare_t3<double>(-1, 2, 1e-15, points_x.size(), points_x.data(), nullptr,
-                     nullptr, points_x.size(), points_x.data(), nullptr,
-                     nullptr);
+  compare_t3<double>(false, -1, 2, 1e-15, points_x.size(), points_x.data(), nullptr, nullptr,
+                     points_x.size(), points_x.data(), nullptr, nullptr);
 }
 
 TEST(Type3TestEdges, d2) {
@@ -198,9 +283,8 @@ TEST(Type3TestEdges, d2) {
       points_y.emplace_back(y);
     }
   }
-  compare_t3<double>(-1, 2, 1e-15, points_x.size(), points_x.data(),
-                     points_y.data(), nullptr, points_x.size(), points_x.data(),
-                     points_y.data(), nullptr);
+  compare_t3<double>(false, -1, 2, 1e-15, points_x.size(), points_x.data(), points_y.data(),
+                     nullptr, points_x.size(), points_x.data(), points_y.data(), nullptr);
 }
 
 TEST(Type3TestEdges, d3) {
@@ -217,9 +301,9 @@ TEST(Type3TestEdges, d3) {
       }
     }
   }
-  compare_t3<double>(-1, 2, 1e-15, points_x.size(), points_x.data(),
-                     points_y.data(), points_z.data(), points_x.size(),
-                     points_x.data(), points_y.data(), points_z.data());
+  compare_t3<double>(false, -1, 2, 1e-15, points_x.size(), points_x.data(), points_y.data(),
+                     points_z.data(), points_x.size(), points_x.data(), points_y.data(),
+                     points_z.data());
 }
 
 
@@ -230,6 +314,10 @@ static auto param_type_names(
 
   Type3TestParam param(info.param);
 
+  if (param.use_gpu)
+    stream << "gpu_";
+  else
+    stream << "host_";
   stream << "d_" << param.dim;
   stream << "_m_" << param.num_in;
   stream << "_n_" << param.num_out;
@@ -240,46 +328,52 @@ static auto param_type_names(
   return stream.str();
 }
 
+#if defined(NEONUFFT_CUDA) || defined(NEONUFFT_ROCM)
+#define NEONUFFT_PU_VALUES false, true
+#else
+#define NEONUFFT_PU_VALUES false
+#endif
+
 INSTANTIATE_TEST_SUITE_P(
     Type3, Type3TestFloat,
-    ::testing::Combine(
-        ::testing::Values<IntType>(1, 2),            // dimension
-        ::testing::Values<IntType>(1, 10, 200, 503), // number of in points
-        ::testing::Values<IntType>(1, 10, 200, 503), // number of out points
-        ::testing::Values<double>(2.0),              // upsampling factor
-        ::testing::Values<double>(1e-4, 1e-7),       // tolerance
-        ::testing::Values<int>(1, -1)),              // sign
+    ::testing::Combine(::testing::Values<IntType>(1, 2),             // dimension
+                       ::testing::Values<IntType>(1, 10, 200, 503),  // number of in points
+                       ::testing::Values<IntType>(1, 10, 200, 503),  // number of out points
+                       ::testing::Values<double>(2.0),               // upsampling factor
+                       ::testing::Values<double>(1e-4, 1e-7),        // tolerance
+                       ::testing::Values<int>(1, -1),                // sign
+                       ::testing::Values<bool>(NEONUFFT_PU_VALUES)),
     param_type_names);
 
 INSTANTIATE_TEST_SUITE_P(
     Type3, Type3TestDouble,
-    ::testing::Combine(
-        ::testing::Values<IntType>(1, 2),            // dimension
-        ::testing::Values<IntType>(1, 10, 200, 503), // number of in points
-        ::testing::Values<IntType>(1, 10, 200, 503), // number of out points
-        ::testing::Values<double>(2.0),              // upsampling factor
-        ::testing::Values<double>(1e-4, 1e-7),       // tolerance
-        ::testing::Values<int>(1, -1)),              // sign
+    ::testing::Combine(::testing::Values<IntType>(1, 2),             // dimension
+                       ::testing::Values<IntType>(1, 10, 200, 503),  // number of in points
+                       ::testing::Values<IntType>(1, 10, 200, 503),  // number of out points
+                       ::testing::Values<double>(2.0),               // upsampling factor
+                       ::testing::Values<double>(1e-4, 1e-7),        // tolerance
+                       ::testing::Values<int>(1, -1),                // sign
+                       ::testing::Values<bool>(NEONUFFT_PU_VALUES)),
     param_type_names);
 
 INSTANTIATE_TEST_SUITE_P(
     Type3D3, Type3TestFloat,
-    ::testing::Combine(
-        ::testing::Values<IntType>(3),         // dimension
-        ::testing::Values<IntType>(1, 10, 99), // number of in points
-        ::testing::Values<IntType>(1, 10, 99), // number of out points
-        ::testing::Values<double>(2.0),        // upsampling factor
-        ::testing::Values<double>(1e-4, 1e-7), // tolerance
-        ::testing::Values<int>(1)),            // sign
+    ::testing::Combine(::testing::Values<IntType>(3),          // dimension
+                       ::testing::Values<IntType>(1, 10, 99),  // number of in points
+                       ::testing::Values<IntType>(1, 10, 99),  // number of out points
+                       ::testing::Values<double>(2.0),         // upsampling factor
+                       ::testing::Values<double>(1e-4, 1e-7),  // tolerance
+                       ::testing::Values<int>(1),              // sign
+                       ::testing::Values<bool>(NEONUFFT_PU_VALUES)),
     param_type_names);
 
 INSTANTIATE_TEST_SUITE_P(
     Type3D3, Type3TestDouble,
-    ::testing::Combine(
-        ::testing::Values<IntType>(3),         // dimension
-        ::testing::Values<IntType>(1, 10, 99), // number of in points
-        ::testing::Values<IntType>(1, 10, 99), // number of out points
-        ::testing::Values<double>(2.0),        // upsampling factor
-        ::testing::Values<double>(1e-4, 1e-7), // tolerance
-        ::testing::Values<int>(1)),            // sign
+    ::testing::Combine(::testing::Values<IntType>(3),          // dimension
+                       ::testing::Values<IntType>(1, 10, 99),  // number of in points
+                       ::testing::Values<IntType>(1, 10, 99),  // number of out points
+                       ::testing::Values<double>(2.0),         // upsampling factor
+                       ::testing::Values<double>(1e-4, 1e-7),  // tolerance
+                       ::testing::Values<int>(1),              // sign
+                       ::testing::Values<bool>(NEONUFFT_PU_VALUES)),
     param_type_names);

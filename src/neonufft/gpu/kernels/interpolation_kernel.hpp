@@ -19,7 +19,8 @@ namespace gpu {
 template <typename T, IntType DIM>
 auto interpolation(const api::DevicePropType& prop, const api::StreamType& stream,
                    const KernelParameters<T>& param, ConstDeviceView<Point<T, DIM>, 1> points,
-                   ConstDeviceView<ComplexType<T>, DIM> grid, DeviceView<ComplexType<T>, 1> out)
-    -> void;
+                   ConstDeviceView<ComplexType<T>, DIM> grid,
+                   ConstDeviceView<ComplexType<T>, 1> postphase_optional,
+                   DeviceView<ComplexType<T>, 1> out) -> void;
 }  // namespace gpu
 }  // namespace neonufft

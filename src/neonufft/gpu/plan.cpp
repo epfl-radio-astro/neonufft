@@ -3,6 +3,7 @@
 
 #include "neonufft/gpu/plan.hpp"
 #include "neonufft/gpu/plan_impl.hpp"
+#include "neonufft/gpu/plan_t3_impl.hpp"
 #include <memory>
 
 namespace neonufft {
@@ -56,7 +57,7 @@ template class Plan<double, 1>;
 template class Plan<double, 2>;
 template class Plan<double, 3>;
 
-/*
+
 
 template <typename T, std::size_t DIM>
 std::uint64_t PlanT3<T, DIM>::grid_memory_size(const Options &opt,
@@ -70,31 +71,29 @@ std::uint64_t PlanT3<T, DIM>::grid_memory_size(const Options &opt,
 
 template <typename T, std::size_t DIM>
 PlanT3<T, DIM>::PlanT3(Options opt, int sign, IntType num_in,
-                       std::array<const T *, DIM> input_points, IntType num_out,
-                       std::array<const T *, DIM> output_points)
-    : impl_(decltype(impl_)(new PlanT3Impl<T, DIM>(opt, sign, num_in,
-                                                   input_points, num_out,
-                                                   output_points),
-                            [](void *ptr) {
+                       std::array<const T*, DIM> input_points, IntType num_out,
+                       std::array<const T*, DIM> output_points, StreamType stream,
+                       std::shared_ptr<Allocator> device_alloc)
+    : impl_(decltype(impl_)(new PlanT3Impl<T, DIM>(opt, sign, num_in, input_points, num_out,
+                                                   output_points, stream, device_alloc),
+                            [](void* ptr) {
                               if (ptr) {
-                                delete reinterpret_cast<PlanT3Impl<T, DIM> *>(
-                                    ptr);
+                                delete reinterpret_cast<PlanT3Impl<T, DIM>*>(ptr);
                               }
                             })) {}
 
 template <typename T, std::size_t DIM>
 PlanT3<T, DIM>::PlanT3(Options opt, int sign, std::array<T, DIM> input_min,
-                       std::array<T, DIM> input_max,
-                       std::array<T, DIM> output_min,
-                       std::array<T, DIM> output_max)
-    : impl_(decltype(impl_)(
-          new PlanT3Impl<T, DIM>(opt, sign, input_min, input_max, output_min,
-                                 output_max),
-          [](void *ptr) {
-            if (ptr) {
-              delete reinterpret_cast<PlanT3Impl<T, DIM> *>(ptr);
-            }
-          })) {}
+                       std::array<T, DIM> input_max, std::array<T, DIM> output_min,
+                       std::array<T, DIM> output_max, StreamType stream,
+                       std::shared_ptr<Allocator> device_alloc)
+    : impl_(decltype(impl_)(new PlanT3Impl<T, DIM>(opt, sign, input_min, input_max, output_min,
+                                                   output_max, stream, device_alloc),
+                            [](void* ptr) {
+                              if (ptr) {
+                                delete reinterpret_cast<PlanT3Impl<T, DIM>*>(ptr);
+                              }
+                            })) {}
 
 template <typename T, std::size_t DIM>
 void PlanT3<T, DIM>::transform( ComplexType<T> *out) {
@@ -127,7 +126,7 @@ template class PlanT3<float, 3>;
 template class PlanT3<double, 1>;
 template class PlanT3<double, 2>;
 template class PlanT3<double, 3>;
-*/
+
 
 } // namespace gpu
 } // namespace neonufft

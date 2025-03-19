@@ -20,6 +20,7 @@ template <typename KER, typename T, int N_SPREAD, int BLOCK_SIZE>
 __global__ static void __launch_bounds__(BLOCK_SIZE)
     interpolation_1d_kernel(KER kernel, ConstDeviceView<Point<T, 1>, 1> points,
                             ConstDeviceView<ComplexType<T>, 1> grid,
+                            ConstDeviceView<ComplexType<T>, 1> postphase_optional,
                             DeviceView<ComplexType<T>, 1> out) {
   const IntType block_step = gridDim.x * BLOCK_SIZE;
   constexpr T half_width = T(N_SPREAD) / T(2);  // half spread width
@@ -64,6 +65,10 @@ __global__ static void __launch_bounds__(BLOCK_SIZE)
       sum.y += ker_val * grid_val.y;
     }
 
+    if (postphase_optional.size()) {
+      const auto post = postphase_optional[point.index];
+      sum = ComplexType<T>{sum.x * post.x - sum.y * post.y, sum.x * post.y + sum.y * post.x};
+    }
     out[point.index] = sum;
   }
 }
@@ -72,6 +77,7 @@ template <typename KER, typename T, int N_SPREAD, int BLOCK_SIZE, int WARP_SIZE>
 __global__ static void __launch_bounds__(BLOCK_SIZE)
     interpolation_2d_kernel(KER kernel, ConstDeviceView<Point<T, 2>, 1> points,
                             ConstDeviceView<ComplexType<T>, 2> grid,
+                            ConstDeviceView<ComplexType<T>, 1> postphase_optional,
                             DeviceView<ComplexType<T>, 1> out) {
   static_assert(2 * N_SPREAD <= WARP_SIZE);
 
@@ -166,7 +172,12 @@ __global__ static void __launch_bounds__(BLOCK_SIZE)
 #endif
 
     if (warp_thread_id == 0) {
-      out[point.index] = ComplexType<T>{sum_real, sum_imag};
+      auto res = ComplexType<T>{sum_real, sum_imag};
+      if (postphase_optional.size()) {
+        const auto post = postphase_optional[point.index];
+        res = ComplexType<T>{res.x * post.x - res.y * post.y, res.x * post.y + res.y * post.x};
+      }
+      out[point.index] = res;
     }
   }
 }
@@ -175,6 +186,7 @@ template <typename KER, typename T, int N_SPREAD, int BLOCK_SIZE, int WARP_SIZE>
 __global__ static void __launch_bounds__(BLOCK_SIZE)
     interpolation_3d_kernel(KER kernel, ConstDeviceView<Point<T, 3>, 1> points,
                             ConstDeviceView<ComplexType<T>, 3> grid,
+                            ConstDeviceView<ComplexType<T>, 1> postphase_optional,
                             DeviceView<ComplexType<T>, 1> out) {
   static_assert(2 * N_SPREAD <= WARP_SIZE);
 
@@ -322,7 +334,12 @@ __global__ static void __launch_bounds__(BLOCK_SIZE)
 #endif
 
     if (warp_thread_id == 0) {
-      out[point.index] = ComplexType<T>{sum_real, sum_imag};
+      auto res = ComplexType<T>{sum_real, sum_imag};
+      if (postphase_optional.size()) {
+        const auto post = postphase_optional[point.index];
+        res = ComplexType<T>{res.x * post.x - res.y * post.y, res.x * post.y + res.y * post.x};
+      }
+      out[point.index] = res;
     }
   }
 }
@@ -332,6 +349,7 @@ auto interpolation_dispatch(const api::DevicePropType& prop, const api::StreamTy
                             const KernelParameters<T>& param,
                             ConstDeviceView<Point<T, DIM>, 1> points,
                             ConstDeviceView<ComplexType<T>, DIM> grid,
+                            ConstDeviceView<ComplexType<T>, 1> postphase_optional,
                             DeviceView<ComplexType<T>, 1> out) -> void {
   static_assert(N_SPREAD >= 2);
   static_assert(N_SPREAD <= 16);
@@ -343,20 +361,21 @@ auto interpolation_dispatch(const api::DevicePropType& prop, const api::StreamTy
 
     if constexpr (DIM == 1) {
       api::launch_kernel(interpolation_1d_kernel<decltype(kernel), T, N_SPREAD, BLOCK_SIZE>,
-                         grid_dim, block_dim, 0, stream, kernel, points, grid, out);
+                         grid_dim, block_dim, 0, stream, kernel, points, grid, postphase_optional,
+                         out);
     } else if constexpr (DIM == 2) {
       api::launch_kernel(
           interpolation_2d_kernel<decltype(kernel), T, N_SPREAD, BLOCK_SIZE, WARP_SIZE>, grid_dim,
-          block_dim, 0, stream, kernel, points, grid, out);
+          block_dim, 0, stream, kernel, points, grid, postphase_optional, out);
     } else {
       api::launch_kernel(
           interpolation_3d_kernel<decltype(kernel), T, N_SPREAD, BLOCK_SIZE, WARP_SIZE>, grid_dim,
-          block_dim, 0, stream, kernel, points, grid, out);
+          block_dim, 0, stream, kernel, points, grid, postphase_optional, out);
     }
   } else {
     if constexpr (N_SPREAD > 2) {
-      interpolation_dispatch<T, DIM, N_SPREAD - 1, BLOCK_SIZE, WARP_SIZE>(prop, stream, param,
-                                                                          points, grid, out);
+      interpolation_dispatch<T, DIM, N_SPREAD - 1, BLOCK_SIZE, WARP_SIZE>(
+          prop, stream, param, points, grid, postphase_optional, out);
     } else {
       throw InternalError("n_spread not in [2, 16]");
     }
@@ -366,13 +385,16 @@ auto interpolation_dispatch(const api::DevicePropType& prop, const api::StreamTy
 template <typename T, IntType DIM>
 auto interpolation(const api::DevicePropType& prop, const api::StreamType& stream,
                    const KernelParameters<T>& param, ConstDeviceView<Point<T, DIM>, 1> points,
-                   ConstDeviceView<ComplexType<T>, DIM> grid, DeviceView<ComplexType<T>, 1> out)
-    -> void {
+                   ConstDeviceView<ComplexType<T>, DIM> grid,
+                   ConstDeviceView<ComplexType<T>, 1> postphase_optional,
+                   DeviceView<ComplexType<T>, 1> out) -> void {
   constexpr int block_size = 128;
   if (prop.warpSize == 32) {
-    interpolation_dispatch<T, DIM, 16, block_size, 32>(prop, stream, param, points, grid, out);
+    interpolation_dispatch<T, DIM, 16, block_size, 32>(prop, stream, param, points, grid,
+                                                       postphase_optional, out);
   } else if (prop.warpSize == 64) {
-    interpolation_dispatch<T, DIM, 16, block_size, 64>(prop, stream, param, points, grid, out);
+    interpolation_dispatch<T, DIM, 16, block_size, 64>(prop, stream, param, points, grid,
+                                                       postphase_optional, out);
   } else {
     throw GPUError("Unsupported GPU warp size.");
   }
@@ -383,6 +405,7 @@ template auto interpolation<float, 1>(const api::DevicePropType& prop,
                                       const KernelParameters<float>& param,
                                       ConstDeviceView<Point<float, 1>, 1> points,
                                       ConstDeviceView<ComplexType<float>, 1> grid,
+                                      ConstDeviceView<ComplexType<float>, 1> postphase_optional,
                                       DeviceView<ComplexType<float>, 1> out) -> void;
 
 template auto interpolation<float, 2>(const api::DevicePropType& prop,
@@ -390,6 +413,7 @@ template auto interpolation<float, 2>(const api::DevicePropType& prop,
                                       const KernelParameters<float>& param,
                                       ConstDeviceView<Point<float, 2>, 1> points,
                                       ConstDeviceView<ComplexType<float>, 2> grid,
+                                      ConstDeviceView<ComplexType<float>, 1> postphase_optional,
                                       DeviceView<ComplexType<float>, 1> out) -> void;
 
 template auto interpolation<float, 3>(const api::DevicePropType& prop,
@@ -397,6 +421,7 @@ template auto interpolation<float, 3>(const api::DevicePropType& prop,
                                       const KernelParameters<float>& param,
                                       ConstDeviceView<Point<float, 3>, 1> points,
                                       ConstDeviceView<ComplexType<float>, 3> grid,
+                                      ConstDeviceView<ComplexType<float>, 1> postphase_optional,
                                       DeviceView<ComplexType<float>, 1> out) -> void;
 
 template auto interpolation<double, 1>(const api::DevicePropType& prop,
@@ -404,6 +429,7 @@ template auto interpolation<double, 1>(const api::DevicePropType& prop,
                                        const KernelParameters<double>& param,
                                        ConstDeviceView<Point<double, 1>, 1> points,
                                        ConstDeviceView<ComplexType<double>, 1> grid,
+                                       ConstDeviceView<ComplexType<double>, 1> postphase_optional,
                                        DeviceView<ComplexType<double>, 1> out) -> void;
 
 template auto interpolation<double, 2>(const api::DevicePropType& prop,
@@ -411,6 +437,7 @@ template auto interpolation<double, 2>(const api::DevicePropType& prop,
                                        const KernelParameters<double>& param,
                                        ConstDeviceView<Point<double, 2>, 1> points,
                                        ConstDeviceView<ComplexType<double>, 2> grid,
+                                       ConstDeviceView<ComplexType<double>, 1> postphase_optional,
                                        DeviceView<ComplexType<double>, 1> out) -> void;
 
 template auto interpolation<double, 3>(const api::DevicePropType& prop,
@@ -418,6 +445,7 @@ template auto interpolation<double, 3>(const api::DevicePropType& prop,
                                        const KernelParameters<double>& param,
                                        ConstDeviceView<Point<double, 3>, 1> points,
                                        ConstDeviceView<ComplexType<double>, 3> grid,
+                                       ConstDeviceView<ComplexType<double>, 1> postphase_optional,
                                        DeviceView<ComplexType<double>, 1> out) -> void;
 
 }  // namespace gpu

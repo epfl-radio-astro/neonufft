@@ -162,8 +162,8 @@ public:
     // api::stream_synchronize(stream_);
     //---
 
-
     gpu::interpolation<T, DIM>(device_prop_, stream_, kernel_param_, nu_loc_, fft_grid_.view(),
+                               DeviceView<ComplexType<T>, 1>(),
                                DeviceView<ComplexType<T>, 1>(out, nu_loc_.size(), 1));
   }
 
@@ -212,7 +212,7 @@ public:
   }
 
   void set_nu_points(IntType num_nu, std::array<const T*, DIM> loc) {
-    std::array<ConstDeviceView<T, 1>, DIM> loc_views;
+    StackArray<ConstDeviceView<T, 1>, DIM> loc_views;
     for (IntType dim = 0; dim < DIM; ++dim) {
       loc_views[dim] = ConstDeviceView<T, 1>(loc[dim], num_nu, 1);
     }
