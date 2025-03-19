@@ -18,6 +18,7 @@
 #include "neonufft/gpu/kernels/rescale_loc_kernel.hpp"
 #include "neonufft/gpu/kernels/spreading_kernel.hpp"
 #include "neonufft/gpu/kernels/upsample_kernel.hpp"
+#include "neonufft/gpu/kernels/min_max_kernel.hpp"
 #include "neonufft/gpu/memory/copy.hpp"
 #include "neonufft/gpu/memory/device_array.hpp"
 #include "neonufft/gpu/plan.hpp"
@@ -63,21 +64,40 @@ public:
   }
 
   PlanT3Impl(Options opt, int sign, IntType num_in, std::array<const T*, DIM> input_points,
-             IntType num_out, std::array<const T*, DIM> output_points)
+             IntType num_out, std::array<const T*, DIM> output_points, api::StreamType stream,
+             std::shared_ptr<Allocator> device_alloc)
       : opt_(opt),
+        stream_(stream),
+        device_alloc_(std::move(device_alloc)),
         sign_(sign),
         kernel_param_(opt_.tol, opt_.upsampfac, opt.kernel_approximation) {
+    int device_id = 0;
+    api::get_device(&device_id);
+    api::get_device_properties(&device_prop_, device_id);
+
+    DeviceArray<T, 1> input_buffer(min_max_worksize<T>(num_in), device_alloc_);
+    DeviceArray<T, 1> output_buffer(min_max_worksize<T>(num_out), device_alloc_);
+    DeviceArray<T, 1> min_max_buffer(4 * DIM, device_alloc_);
+
+    for (IntType d = 0; d < DIM; ++d) {
+      min_max<T>(ConstDeviceView<T, 1>(input_points[d], num_in), min_max_buffer.data() + 2 * d,
+                 min_max_buffer.data() + 2 * d + 1, input_buffer.data(), stream_);
+      min_max<T>(ConstDeviceView<T, 1>(output_points[d], num_out),
+                 min_max_buffer.data() + 2 * DIM + 2 * d,
+                 min_max_buffer.data() + 2 * DIM + 2 * d + 1, output_buffer.data(), stream_);
+    }
+
+    HostArray<T, 1> min_max_host_buffer(min_max_buffer.shape());
+    memcopy(min_max_buffer, min_max_host_buffer, stream_);
+    api::stream_synchronize(stream_;);
 
     std::array<T, DIM> input_min, input_max, output_min, output_max;
 
     for (IntType d = 0; d < DIM; ++d) {
-      //TODO
-      // const auto in_mm = min_max(num_in, input_points[d]);
-      // input_min[d] = in_mm.first;
-      // input_max[d] = in_mm.second;
-      // const auto out_mm = min_max(num_out, output_points[d]);
-      // output_min[d] = out_mm.first;
-      // output_max[d] = out_mm.second;
+      input_min[d] = min_max_host_buffer[2 * d];
+      input_max[d] = min_max_host_buffer[2 * d + 1];
+      output_min[d] = min_max_host_buffer[2 * d + 2 * DIM];
+      output_max[d] = min_max_host_buffer[2 * d + 2 * DIM];
     }
 
     grid_info_ = GridInfo(kernel_param_.n_spread, opt_.upsampfac, opt_.recenter_threshold,
@@ -86,18 +106,22 @@ public:
     this->init(input_min, input_max, output_min, output_max);
     this->set_input_points(num_in, input_points);
     this->set_output_points(num_out, output_points);
-
-    // TODO: set points
-    // this->set_points(num_in, input_points, num_out, output_points);
   }
 
   PlanT3Impl(Options opt, int sign, std::array<T, DIM> input_min, std::array<T, DIM> input_max,
-             std::array<T, DIM> output_min, std::array<T, DIM> output_max)
+             std::array<T, DIM> output_min, std::array<T, DIM> output_max, api::StreamType stream,
+             std::shared_ptr<Allocator> device_alloc)
       : opt_(opt),
+        stream_(stream),
+        device_alloc_(std::move(device_alloc)),
         sign_(sign),
         kernel_param_(opt_.tol, opt_.upsampfac, opt_.kernel_approximation),
         grid_info_(kernel_param_.n_spread, opt_.upsampfac, opt_.recenter_threshold, input_min,
                    input_max, output_min, output_max) {
+    int device_id = 0;
+    api::get_device(&device_id);
+    api::get_device_properties(&device_prop_, device_id);
+
     this->init(input_min, input_max, output_min, output_max);
   }
 
@@ -121,52 +145,7 @@ public:
       rescaled_input_points_.reset(num_in);
     }
 
-    {
-      // The spreading is done in two steps, processing every even group and
-      // every odd group. To allow for load balancing, use 3 partitions per
-      // thread as target at each step.
-      IntType num_input_partitions = 6 * th_pool_.num_threads();
-
-      // spreading requires a mimimum width of n_spread
-      const IntType partition_width = kernel_param_.n_spread + 4;
-
-      // find suitable dimension to split. Select outer most dimension that fits
-      // for better cache usage.
-      IntType input_partition_dim = DIM - 1;
-      if constexpr (DIM > 1) {
-        if (grid_info_.spread_grid_size[DIM - 1] < num_input_partitions * partition_width &&
-            grid_info_.spread_grid_size[DIM - 2] >= num_input_partitions * partition_width) {
-          input_partition_dim = DIM - 2;
-        }
-      }
-
-      // the width of a partition must be at least n_spread to avoid race
-      // condition in spreading kernel
-      num_input_partitions = std::min(
-          num_input_partitions, grid_info_.spread_grid_size[input_partition_dim] / partition_width);
-
-      num_input_partitions = std::max<IntType>(1, num_input_partitions);
-
-      input_partition_ = rescale_loc_partition_t3<T, DIM>(
-          input_partition_dim, num_input_partitions, num_in, grid_info_.input_offsets,
-          input_scaling_factors, input_points, rescaled_input_points_.data());
-    }
-
-    // z order sorting within each group
-    if (opt_.sort_input) {
-      th_pool_.parallel_for(
-          {0, IntType(input_partition_.size())}, 1, [&](IntType, BlockRange range) {
-            for (IntType idx_group = range.begin; idx_group < range.end; ++idx_group) {
-              const auto& g = input_partition_[idx_group];
-
-              std::sort(rescaled_input_points_.data() + g.begin,
-                        rescaled_input_points_.data() + g.begin + g.size,
-                        [](const auto& p1, const auto& p2) {
-                          return zorder::less_0_1<DIM>(p1.coord, p2.coord);
-                        });
-            }
-          });
-    }
+    // TODO partitioning
   }
 
   void set_output_points(IntType num_out, std::array<const T*, DIM> output_points) {
@@ -182,20 +161,6 @@ public:
         DIM - 1, 4 * th_pool_.num_threads(), num_out, grid_info_.output_offsets,
         output_scaling_factors, output_points, rescaled_output_points_.data());
 
-    if (opt_.sort_output) {
-      th_pool_.parallel_for(
-          {0, IntType(output_partition.size())}, 1, [&](IntType, BlockRange range) {
-            for (IntType idx_group = range.begin; idx_group < range.end; ++idx_group) {
-              const auto& g = output_partition[idx_group];
-
-              std::sort(rescaled_output_points_.data() + g.begin,
-                        rescaled_output_points_.data() + g.begin + g.size,
-                        [](const auto& p1, const auto& p2) {
-                          return zorder::less_0_1<DIM>(p1.coord, p2.coord);
-                        });
-            }
-          });
-    }
 
     // compute postphase with correction factors
     {
@@ -222,7 +187,7 @@ public:
   }
 
   void transform(ComplexType<T>* out) {
-    fft_grid_.view().zero();
+    fft_grid_.view().zero(stream_);
 
     // TODO: folding might not be needed. Do we ever have points on the actual
     // edges? check how points are rescaled. Unit tests show values in padding
@@ -255,67 +220,27 @@ public:
 
     fft_grid_.transform();
 
-    if (th_pool_.num_threads() > 1) {
-      th_pool_.parallel_for({0, rescaled_output_points_.size()}, [&](IntType, BlockRange range) {
-        auto sub_view = rescaled_output_points_.sub_view(range.begin, range.end - range.begin);
-        interpolate<T, DIM>(opt_.kernel_type, kernel_param_, fft_grid_.view(), sub_view.shape(0),
-                            sub_view.data(), out);
-      });
-    } else {
-      interpolate<T, DIM>(opt_.kernel_type, kernel_param_, fft_grid_.view(),
-                          rescaled_output_points_.shape(0), rescaled_output_points_.data(), out);
-    }
+    interpolate<T, DIM>(opt_.kernel_type, kernel_param_, fft_grid_.view(),
+                        rescaled_output_points_.shape(0), rescaled_output_points_.data(), out);
+
     // TODO: move to kernel. NOTE: integration into interpolate functions
     // results in large performance hit with clang (18)
     for (IntType i = 0; i < postphase_.shape(0); ++i) {
       out[i] *= postphase_[i];
     }
 
-    // Reset spread grid
-    spread_grid_.zero();
+    // TODO: reset function
+    //  Reset spread grid
+    spread_grid_.zero(stream_);
   }
 
   void add_input(const ComplexType<T>* in) {
-    if (th_pool_.num_threads() > 1) {
-      // spread even groups
-      th_pool_.parallel_for(
-          {0, IntType(input_partition_.size())}, 2, [&](IntType, BlockRange range) {
-            for (IntType idx_group = range.begin; idx_group < range.end; ++idx_group) {
-              const auto& g = input_partition_[idx_group];
-              if (idx_group % 2 == 0 && g.size) {
-                auto sub_view = rescaled_input_points_.sub_view(g.begin, g.size);
-                spread<T, DIM>(opt_.kernel_type, kernel_param_, sub_view.shape(0), sub_view.data(),
-                               in, prephase_.size() ? prephase_.data() : nullptr,
-                               grid_info_.spread_grid_size, spread_grid_);
-              }
-            }
-          });
-
-      // spread odd groups
-      th_pool_.parallel_for(
-          {0, IntType(input_partition_.size())}, 2, [&](IntType, BlockRange range) {
-            for (IntType idx_group = range.begin; idx_group < range.end; ++idx_group) {
-              const auto& g = input_partition_[idx_group];
-              if (idx_group % 2 == 1 && g.size) {
-                auto sub_view = rescaled_input_points_.sub_view(g.begin, g.size);
-                spread<T, DIM>(opt_.kernel_type, kernel_param_, sub_view.shape(0), sub_view.data(),
-                               in, prephase_.size() ? prephase_.data() : nullptr,
-                               grid_info_.spread_grid_size, spread_grid_);
-              }
-            }
-          });
-    } else {
-      spread<T, DIM>(opt_.kernel_type, kernel_param_, rescaled_input_points_.shape(0),
-                     rescaled_input_points_.data(), in,
-                     prephase_.size() ? prephase_.data() : nullptr, grid_info_.spread_grid_size,
-                     spread_grid_);
-    }
+    ConstDeviceView<ComplexType<T>, 1> in_view(in, rescaled_input_points_.shape(0), 1);
+    gpu::spread<T, DIM>(device_prop_, stream_, kernel_param_, partition_, rescaled_input_points_,
+                        in_view, prephase_, fft_grid_.view());
   }
 
 private:
-
-    
-
   void init(std::array<T, DIM> input_min, std::array<T, DIM> input_max,
             std::array<T, DIM> output_min, std::array<T, DIM> output_max) {
     for (IntType d = 0; d < DIM; ++d) {
@@ -345,7 +270,7 @@ private:
     }
 
     // zero spread grid to prepare accumulation of input data
-    spread_grid_.zero();
+    spread_grid_.zero(stream_);
 
     // reshape fft grid
     {
@@ -355,28 +280,34 @@ private:
         new_grid |= (grid_info_.fft_grid_size[d] != fft_grid_.shape(d));
       }
       if (new_grid) {
-        fft_grid_ = FFTGrid<T, DIM>(opt_.num_threads, grid_info_.fft_grid_size, sign_);
+        fft_grid_ = FFTGrid<T, DIM>(device_alloc_, grid_info_.fft_grid_size, sign_);
       }
     }
 
     // recompute correction factor for kernel windowing
     // we compute the inverse to use multiplication during execution
+    std::array<HostArray<T, 1>, DIM> correction_factors_host;
     for (std::size_t d = 0; d < DIM; ++d) {
       auto correction_fact_size = fft_grid_.shape(d) / 2 + 1;
+      correction_factors_host[d].reset(correction_fact_size);
       if (correction_factors_[d].shape(0) != correction_fact_size) {
         correction_factors_[d].reset(correction_fact_size);
       }
 
-      contrib::onedim_fseries_kernel_inverse(fft_grid_.shape(d), correction_factors_[d].data(),
+      contrib::onedim_fseries_kernel_inverse(fft_grid_.shape(d), correction_factors_host[d].data(),
                                              kernel_param_.n_spread, kernel_param_.es_halfwidth,
                                              kernel_param_.es_beta, kernel_param_.es_c);
+      memcopy(correction_factors_host[d], correction_factors_[d], stream_);
     }
+    api::stream_synchronize(stream_);
   }
 
   Options opt_;
+  api::DevicePropType device_prop_;
+  std::shared_ptr<Allocator> device_alloc_;
+  api::StreamType stream_;
   DeviceArray<Point<T, DIM>, 1> rescaled_input_points_;
   DeviceArray<Point<T, DIM>, 1> rescaled_output_points_;
-  std::vector<PartitionGroup> input_partition_;
   DeviceArray<ComplexType<T>, 1> prephase_;
   DeviceArray<ComplexType<T>, 1> postphase_;
   std::array<DeviceArray<T, 1>, DIM> correction_factors_;
@@ -387,6 +318,7 @@ private:
   DeviceArray<ComplexType<T>, DIM> spread_grid_;
   std::array<T, DIM> gam_;
   std::array<T, DIM> spread_grid_spacing_;
+  DeviceArray<PartitionGroup, DIM> partition_;
 };
 
 // TODO remove
