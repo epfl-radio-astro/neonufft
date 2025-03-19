@@ -7,6 +7,7 @@ set(NEONUFFT_SOURCE_FILES
 	kernels/rescale_loc_kernel.cu
 	kernels/spreading_kernel.cu
 	kernels/downsample_kernel.cu
+	kernels/min_max_kernel.cu
 	)
 
 
