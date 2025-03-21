@@ -100,7 +100,7 @@ public:
       input_min[d] = min_max_host_buffer[2 * d];
       input_max[d] = min_max_host_buffer[2 * d + 1];
       output_min[d] = min_max_host_buffer[2 * d + 2 * DIM];
-      output_max[d] = min_max_host_buffer[2 * d + 2 * DIM];
+      output_max[d] = min_max_host_buffer[2 * d + 2 * DIM + 1];
     }
 
     grid_info_ = GridInfoT3<T, DIM>(kernel_param_.n_spread, opt_.upsampfac, opt_.recenter_threshold,
@@ -166,7 +166,7 @@ public:
     for(IntType d = 0; d <DIM; ++d) {
       loc_views[d] = ConstDeviceView<T, 1>(input_points[d], num_in, 1);
     }
-    rescale_and_permut_t3<T, DIM>(device_prop_, stream_, loc_views, fft_grid_.view().shape(),
+    rescale_and_permut_t3<T, DIM>(device_prop_, stream_, loc_views, spread_grid_.shape(),
                                   grid_info_.input_offsets, input_scaling_factors, input_partition_,
                                   rescaled_input_points_);
   }
@@ -187,14 +187,17 @@ public:
 
 
     // TODO: output partition not needed. Still sort for better caching?
-    IndexArray<DIM> output_partition_shape;
-    // output_partition_shape.fill(1);
-    output_partition_shape = input_partition_.shape();
+    // IndexArray<DIM> output_partition_shape;
+    // // output_partition_shape.fill(1);
+    // output_partition_shape = input_partition_.shape();
 
-    DeviceArray<PartitionGroup, DIM> output_partition(output_partition_shape, device_alloc_);
-    rescale_and_permut_t3<T, DIM>(device_prop_, stream_, loc_views, fft_grid_.shape(),
-                                  grid_info_.output_offsets, output_scaling_factors,
-                                  output_partition, rescaled_output_points_);
+    // DeviceArray<PartitionGroup, DIM> output_partition(output_partition_shape, device_alloc_);
+    // rescale_and_permut_t3<T, DIM>(device_prop_, stream_, loc_views, fft_grid_.shape(),
+    //                               grid_info_.output_offsets, output_scaling_factors,
+    //                               output_partition, rescaled_output_points_);
+
+    rescale_t3<T, DIM>(device_prop_, stream_, loc_views, spread_grid_.shape(),
+                       grid_info_.output_offsets, output_scaling_factors, rescaled_output_points_);
 
     // compute postphase with correction factors
     {
@@ -238,23 +241,13 @@ public:
   void transform(ComplexType<T>* out) {
     fft_grid_.view().zero(stream_);
 
-    // TODO: folding might not be needed. Do we ever have points on the actual
-    // edges? check how points are rescaled. Unit tests show values in padding
-    // is always 0
-    // fold_padding<T, DIM>(kernel_param_.n_spread, spread_grid_);
-
     std::array<ConstDeviceView<T, 1>, DIM> correction_factor_views;
     for (IntType dim = 0; dim < DIM; ++dim) {
       correction_factor_views[dim] = correction_factors_[dim].view();
     }
 
-    IndexArray<DIM> padding;
-    padding.fill(spread_padding(kernel_param_.n_spread));
-
-    gpu::upsample<T, DIM>(device_prop_, stream_, NEONUFFT_MODE_ORDER_CMCL,
-                          spread_grid_.sub_view(padding, grid_info_.spread_grid_size),
+    gpu::upsample<T, DIM>(device_prop_, stream_, NEONUFFT_MODE_ORDER_CMCL, spread_grid_,
                           correction_factor_views, fft_grid_.view());
-
 
     fft_grid_.transform();
 
@@ -295,10 +288,10 @@ private:
     {
       bool new_grid = false;
       for (std::size_t d = 0; d < DIM; ++d) {
-        new_grid |= (spread_grid_.shape(d) != grid_info_.padded_spread_grid_size[d]);
+        new_grid |= (spread_grid_.shape(d) != grid_info_.spread_grid_size[d]);
       }
       if (new_grid) {
-        spread_grid_.reset(grid_info_.padded_spread_grid_size, device_alloc_);
+        spread_grid_.reset(grid_info_.spread_grid_size, device_alloc_);
       }
     }
 

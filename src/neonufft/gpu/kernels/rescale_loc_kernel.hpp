@@ -28,5 +28,10 @@ auto rescale_and_permut_t3(const api::DevicePropType& prop, const api::StreamTyp
                            DeviceView<PartitionGroup, DIM> partition,
                            DeviceView<Point<T, DIM>, 1> points) -> void;
 
+template <typename T, IntType DIM>
+auto rescale_t3(const api::DevicePropType& prop, const api::StreamType& stream,
+                StackArray<ConstDeviceView<T, 1>, DIM> loc, IndexArray<DIM> grid_size,
+                StackArray<T, DIM> offset, StackArray<T, DIM> scaling_factor,
+                DeviceView<Point<T, DIM>, 1> points) -> void;
 }  // namespace gpu
 }  // namespace neonufft
