@@ -16,6 +16,14 @@
 namespace neonufft {
 namespace gpu {
 
+__device__ __forceinline__ static float calc_ceil(float value) {
+  return ceilf(value);
+}
+
+__device__ __forceinline__ static double calc_ceil(double value) {
+  return ceil(value);
+}
+
 template <typename KER, typename T, int N_SPREAD, int BLOCK_SIZE>
 __global__ static void __launch_bounds__(BLOCK_SIZE)
     interpolation_1d_kernel(KER kernel, ConstDeviceView<Point<T, 1>, 1> points,
@@ -344,6 +352,80 @@ __global__ static void __launch_bounds__(BLOCK_SIZE)
   }
 }
 
+
+// simple test kernel for baseline comparison
+template <typename KER, typename T, int N_SPREAD, int BLOCK_SIZE>
+__global__ static void __launch_bounds__(BLOCK_SIZE)
+    interpolation_3d_v2_kernel(KER kernel, ConstDeviceView<Point<T, 3>, 1> points,
+                            ConstDeviceView<ComplexType<T>, 3> grid,
+                            ConstDeviceView<ComplexType<T>, 1> postphase_optional,
+                            DeviceView<ComplexType<T>, 1> out) {
+  constexpr int n_spread = KER::n_spread;
+
+  constexpr T half_width = T(n_spread) / T(2);  // half spread width
+
+  T ker_x[n_spread];
+  T ker_y[n_spread];
+  T ker_z[n_spread];
+
+  for (int idx_p = threadIdx.x + BLOCK_SIZE * blockIdx.x; idx_p < points.size(); idx_p += BLOCK_SIZE * gridDim.x) {
+    const auto point = points[idx_p];
+
+    const T loc_x = point.coord[0] * grid.shape(0);  // px in [0, 1]
+    const T idx_init_ceil_x = calc_ceil(loc_x - half_width);
+    const IntType idx_init_x = IntType(idx_init_ceil_x);  // fine grid start index (-
+    const T x = idx_init_ceil_x - loc_x;                  // x1 in [-w/2,-w/2+1], up to rounding
+
+    const T loc_y = point.coord[1] * grid.shape(1);
+    const T idx_init_ceil_y = calc_ceil(loc_y - half_width);
+    const IntType idx_init_y = IntType(idx_init_ceil_y);
+    const T y = idx_init_ceil_y - loc_y;
+
+    const T loc_z = point.coord[2] * grid.shape(2);
+    const T idx_init_ceil_z = calc_ceil(loc_z - half_width);
+    const IntType idx_init_z = IntType(idx_init_ceil_z);
+    const T z = idx_init_ceil_z - loc_z;
+
+    for(int idx_ker = 0; idx_ker < n_spread; ++idx_ker) {
+      const T idx_ker_flt = idx_ker;
+      ker_x[idx_ker] = kernel.eval_scalar(x + idx_ker_flt);
+      ker_y[idx_ker] = kernel.eval_scalar(y + idx_ker_flt);
+      ker_z[idx_ker] = kernel.eval_scalar(z + idx_ker_flt);
+    }
+
+    ComplexType<T> sum{0, 0};
+    for (IntType idx_z = idx_init_z; idx_z < idx_init_z + n_spread; ++idx_z) {
+      IntType idx_z_wrap = idx_z < 0 ? idx_z + grid.shape(2)
+                                     : (idx_z > grid.shape(2) - 1 ? idx_z - grid.shape(2) : idx_z);
+      for (IntType idx_y = idx_init_y; idx_y < idx_init_y + n_spread; ++idx_y) {
+        IntType idx_y_wrap = idx_y < 0
+                                 ? idx_y + grid.shape(1)
+                                 : (idx_y > grid.shape(1) - 1 ? idx_y - grid.shape(1) : idx_y);
+        const T ker_val_yz = ker_y[idx_y - idx_init_y] * ker_z[idx_z - idx_init_z];
+        for (IntType idx_x = idx_init_x; idx_x < idx_init_x + n_spread; ++idx_x) {
+          IntType idx_x_wrap = idx_x < 0
+                                   ? idx_x + grid.shape(0)
+                                   : (idx_x > grid.shape(0) - 1 ? idx_x - grid.shape(0) : idx_x);
+
+          const T ker_val = ker_x[idx_x - idx_init_x] * ker_val_yz;
+
+          auto grid_val = grid[{idx_x_wrap, idx_y_wrap, idx_z_wrap}];
+          sum.x += ker_val * grid_val.x;
+          sum.y += ker_val * grid_val.y;
+        }
+      }
+    }
+
+    if (postphase_optional.size()) {
+      const auto post = postphase_optional[point.index];
+      sum = ComplexType<T>{sum.x * post.x - sum.y * post.y, sum.x * post.y + sum.y * post.x};
+    }
+    out[point.index] = sum;
+  }
+}
+
+
+
 template <typename T, IntType DIM, int N_SPREAD, int BLOCK_SIZE, int WARP_SIZE>
 auto interpolation_dispatch(const api::DevicePropType& prop, const api::StreamType& stream,
                             const KernelParameters<T>& param,
@@ -357,7 +439,8 @@ auto interpolation_dispatch(const api::DevicePropType& prop, const api::StreamTy
   if (param.n_spread == N_SPREAD) {
     EsKernelDirect<T, N_SPREAD> kernel{param.es_beta};
     const dim3 block_dim(std::min<int>(BLOCK_SIZE, prop.maxThreadsDim[0]), 1, 1);
-    const auto grid_dim = kernel_launch_grid(prop, {points.size(), 1, 1}, block_dim);
+    const auto grid_dim =
+        kernel_launch_grid(prop, {points.size(), 1, 1}, {block_dim.x / WARP_SIZE, 1, 1});
 
     if constexpr (DIM == 1) {
       api::launch_kernel(interpolation_1d_kernel<decltype(kernel), T, N_SPREAD, BLOCK_SIZE>,
@@ -371,6 +454,13 @@ auto interpolation_dispatch(const api::DevicePropType& prop, const api::StreamTy
       api::launch_kernel(
           interpolation_3d_kernel<decltype(kernel), T, N_SPREAD, BLOCK_SIZE, WARP_SIZE>, grid_dim,
           block_dim, 0, stream, kernel, points, grid, postphase_optional, out);
+
+      // constexpr int block_size = 256;
+      // const dim3 block_dim(std::min<int>(block_size, prop.maxThreadsDim[0]), 1, 1);
+      // const auto grid_dim = kernel_launch_grid(prop, {points.size(), 1, 1}, block_dim);
+      // api::launch_kernel(interpolation_3d_v2_kernel<decltype(kernel), T, N_SPREAD, block_size>,
+      //                    grid_dim, block_dim, 0, stream, kernel, points, grid,
+      //                    postphase_optional, out);
     }
   } else {
     if constexpr (N_SPREAD > 2) {

@@ -15,4 +15,4 @@ target_include_directories(neonufft_contrib_objects PRIVATE ${NEONUFFT_INCLUDE_D
 target_link_libraries(neonufft_contrib_objects PRIVATE ${NEONUFFT_EXTERNAL_LIBS})
 target_link_libraries(neonufft_contrib_objects PRIVATE ${NEONUFFT_EXTERNAL_LIBS_PUBLIC})
 target_include_directories(neonufft_contrib_objects INTERFACE $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>  $<BUILD_INTERFACE:${PROJECT_BINARY_DIR}>)
-set_target_properties(neonufft_contrib_objects PROPERTIES VISIBILITY_INLINES_HIDDEN TRUE CXX_VISIBILITY_PRESET hidden)
+# set_target_properties(neonufft_contrib_objects PROPERTIES VISIBILITY_INLINES_HIDDEN TRUE CXX_VISIBILITY_PRESET hidden)

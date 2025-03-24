@@ -169,6 +169,9 @@ public:
     rescale_and_permut_t3<T, DIM>(device_prop_, stream_, loc_views, spread_grid_.shape(),
                                   grid_info_.input_offsets, input_scaling_factors, input_partition_,
                                   rescaled_input_points_);
+
+    // rescale_t3<T, DIM>(device_prop_, stream_, loc_views, spread_grid_.shape(),
+    //                    grid_info_.input_offsets, input_scaling_factors, rescaled_input_points_);
   }
 
   void set_output_points(IntType num_out, std::array<const T*, DIM> output_points) {

@@ -15,6 +15,20 @@
 namespace neonufft {
 namespace gpu {
 
+
+__device__ __forceinline__ static float calc_ceil(float value) {
+  return ceilf(value);
+}
+
+__device__ __forceinline__ static double calc_ceil(double value) {
+  return ceil(value);
+}
+
+//-------------------------------------
+//      partition spreading
+//-------------------------------------
+
+/*
 template <typename KER, typename T>
 __device__ static void spread_points(const KER& kernel, IndexArray<1> thread_grid_idx,
                                      ConstDeviceView<Point<T, 1>, 1> points,
@@ -403,7 +417,7 @@ __global__ static void __launch_bounds__(BLOCK_SIZE * BLOCK_SIZE * BLOCK_SIZE)
   }
 }
 
-template <typename T, IntType DIM, int N_SPREAD, int BLOCK_SIZE>
+template <typename T, IntType DIM, int N_SPREAD>
 auto spread_dispatch(const api::DevicePropType& prop, const api::StreamType& stream,
                      const KernelParameters<T>& param,
                      ConstDeviceView<PartitionGroup, DIM> partition,
@@ -415,41 +429,278 @@ auto spread_dispatch(const api::DevicePropType& prop, const api::StreamType& str
   static_assert(N_SPREAD >= 2);
   static_assert(N_SPREAD <= 16);
 
+  constexpr int block_size = PartitionGroup::width;
+
   if (param.n_spread == N_SPREAD) {
     EsKernelDirect<T, N_SPREAD> kernel{param.es_beta};
 
     if constexpr (DIM == 1) {
-      const dim3 block_dim(BLOCK_SIZE, 1, 1);
+      const dim3 block_dim(block_size, 1, 1);
       const dim3 grid_dim(std::min<IntType>(partition.shape(0), prop.maxGridSize[0]), 1, 1);
-      api::launch_kernel(spread_1d_kernel<decltype(kernel), T, BLOCK_SIZE>, grid_dim, block_dim, 0,
+      api::launch_kernel(spread_1d_kernel<decltype(kernel), T, block_size>, grid_dim, block_dim, 0,
                          stream, kernel, partition, points, input, prephase_optional, grid);
     } else if constexpr (DIM == 2) {
-      const dim3 block_dim(BLOCK_SIZE, BLOCK_SIZE, 1);
+      const dim3 block_dim(block_size, block_size, 1);
       const dim3 grid_dim(std::min<IntType>(partition.shape(0), prop.maxGridSize[0]),
                           std::min<IntType>(partition.shape(1), prop.maxGridSize[1]), 1);
 
-      api::launch_kernel(spread_2d_kernel<decltype(kernel), T, BLOCK_SIZE>, grid_dim,
+      api::launch_kernel(spread_2d_kernel<decltype(kernel), T, block_size>, grid_dim,
                          block_dim, 0, stream, kernel, partition, points, input, prephase_optional,
                          grid);
     } else {
-      const dim3 block_dim(BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
+      const dim3 block_dim(block_size, block_size, block_size);
       const dim3 grid_dim(std::min<IntType>(partition.shape(0), prop.maxGridSize[0]),
                           std::min<IntType>(partition.shape(1), prop.maxGridSize[1]),
                           std::min<IntType>(partition.shape(2), prop.maxGridSize[2]));
 
-      api::launch_kernel(spread_3d_kernel<decltype(kernel), T, BLOCK_SIZE>, grid_dim,
+      api::launch_kernel(spread_3d_kernel<decltype(kernel), T, block_size>, grid_dim,
                          block_dim, 0, stream, kernel, partition, points, input, prephase_optional,
                          grid);
+
     }
   } else {
     if constexpr (N_SPREAD > 2) {
-      spread_dispatch<T, DIM, N_SPREAD - 1, BLOCK_SIZE>(prop, stream, param, partition, points,
-                                                        input, prephase_optional, grid);
+      spread_dispatch<T, DIM, N_SPREAD - 1>(prop, stream, param, partition, points, input,
+                                            prephase_optional, grid);
     } else {
       throw InternalError("n_spread not in [2, 16]");
     }
   }
 }
+
+*/
+
+
+//-------------------------------------
+//      atomic spreading
+//-------------------------------------
+template <typename KER, typename T, int BLOCK_SIZE>
+__global__ static void __launch_bounds__(BLOCK_SIZE)
+    spread_1d_kernel(KER kernel, ConstDeviceView<Point<T, 1>, 1> points,
+                     ConstDeviceView<ComplexType<T>, 1> input,
+                     ConstDeviceView<ComplexType<T>, 1> prephase_optional,
+                     DeviceView<ComplexType<T>, 1> grid) {
+  constexpr int n_spread = KER::n_spread;
+
+  constexpr T half_width = T(n_spread) / T(2);  // half spread width
+
+  T ker_x[n_spread];
+
+  for (int idx_p = threadIdx.x + BLOCK_SIZE * blockIdx.x; idx_p < points.size(); idx_p += BLOCK_SIZE * gridDim.x) {
+    const auto point = points[idx_p];
+
+    const T loc_x = point.coord[0] * grid.shape(0);  // px in [0, 1]
+    const T idx_init_ceil_x = calc_ceil(loc_x - half_width);
+    const IntType idx_init_x = IntType(idx_init_ceil_x);  // fine grid start index (-
+    const T x = idx_init_ceil_x - loc_x;                  // x1 in [-w/2,-w/2+1], up to rounding
+
+    for(int idx_ker = 0; idx_ker < n_spread; ++idx_ker) {
+      const T idx_ker_flt = idx_ker;
+      ker_x[idx_ker] = kernel.eval_scalar(x + idx_ker_flt);
+    }
+
+    auto in_val = input[point.index];
+    if (prephase_optional.size()) {
+      const auto pre = prephase_optional[point.index];
+      in_val =
+          ComplexType<T>{in_val.x * pre.x - in_val.y * pre.y, in_val.x * pre.y + in_val.y * pre.x};
+    }
+
+    for (IntType idx_x = idx_init_x; idx_x < idx_init_x + n_spread; ++idx_x) {
+      IntType idx_x_wrap = idx_x < 0 ? idx_x + grid.shape(0)
+                                     : (idx_x > grid.shape(0) - 1 ? idx_x - grid.shape(0) : idx_x);
+
+      const T ker_val = ker_x[idx_x - idx_init_x];
+
+      auto res = in_val;
+      res.x *= ker_val;
+      res.y *= ker_val;
+
+      auto& grid_val = grid[idx_x_wrap];
+      atomicAdd(&grid_val.x, res.x);
+      atomicAdd(&grid_val.y, res.y);
+    }
+  }
+}
+
+template <typename KER, typename T, int BLOCK_SIZE>
+__global__ static void __launch_bounds__(BLOCK_SIZE)
+    spread_2d_kernel(KER kernel, ConstDeviceView<Point<T, 2>, 1> points,
+                     ConstDeviceView<ComplexType<T>, 1> input,
+                     ConstDeviceView<ComplexType<T>, 1> prephase_optional,
+                     DeviceView<ComplexType<T>, 2> grid) {
+  constexpr int n_spread = KER::n_spread;
+
+  constexpr T half_width = T(n_spread) / T(2);  // half spread width
+
+  T ker_x[n_spread];
+  T ker_y[n_spread];
+
+  for (int idx_p = threadIdx.x + BLOCK_SIZE * blockIdx.x; idx_p < points.size(); idx_p += BLOCK_SIZE * gridDim.x) {
+    const auto point = points[idx_p];
+
+    const T loc_x = point.coord[0] * grid.shape(0);  // px in [0, 1]
+    const T idx_init_ceil_x = calc_ceil(loc_x - half_width);
+    const IntType idx_init_x = IntType(idx_init_ceil_x);  // fine grid start index (-
+    const T x = idx_init_ceil_x - loc_x;                  // x1 in [-w/2,-w/2+1], up to rounding
+
+    const T loc_y = point.coord[1] * grid.shape(1);
+    const T idx_init_ceil_y = calc_ceil(loc_y - half_width);
+    const IntType idx_init_y = IntType(idx_init_ceil_y);
+    const T y = idx_init_ceil_y - loc_y;
+
+    for(int idx_ker = 0; idx_ker < n_spread; ++idx_ker) {
+      const T idx_ker_flt = idx_ker;
+      ker_x[idx_ker] = kernel.eval_scalar(x + idx_ker_flt);
+      ker_y[idx_ker] = kernel.eval_scalar(y + idx_ker_flt);
+    }
+
+    auto in_val = input[point.index];
+    if (prephase_optional.size()) {
+      const auto pre = prephase_optional[point.index];
+      in_val =
+          ComplexType<T>{in_val.x * pre.x - in_val.y * pre.y, in_val.x * pre.y + in_val.y * pre.x};
+    }
+
+    for (IntType idx_y = idx_init_y; idx_y < idx_init_y + n_spread; ++idx_y) {
+      IntType idx_y_wrap = idx_y < 0 ? idx_y + grid.shape(1)
+                                     : (idx_y > grid.shape(1) - 1 ? idx_y - grid.shape(1) : idx_y);
+      for (IntType idx_x = idx_init_x; idx_x < idx_init_x + n_spread; ++idx_x) {
+        IntType idx_x_wrap = idx_x < 0
+                                 ? idx_x + grid.shape(0)
+                                 : (idx_x > grid.shape(0) - 1 ? idx_x - grid.shape(0) : idx_x);
+
+        const T ker_val = ker_x[idx_x - idx_init_x] * ker_y[idx_y - idx_init_y];
+
+        auto res = in_val;
+        res.x *= ker_val;
+        res.y *= ker_val;
+
+        auto& grid_val = grid[{idx_x_wrap, idx_y_wrap}];
+        atomicAdd(&grid_val.x, res.x);
+        atomicAdd(&grid_val.y, res.y);
+      }
+    }
+  }
+}
+
+template <typename KER, typename T, int BLOCK_SIZE>
+__global__ static void __launch_bounds__(BLOCK_SIZE)
+    spread_3d_kernel(KER kernel, ConstDeviceView<Point<T, 3>, 1> points,
+                     ConstDeviceView<ComplexType<T>, 1> input,
+                     ConstDeviceView<ComplexType<T>, 1> prephase_optional,
+                     DeviceView<ComplexType<T>, 3> grid) {
+  constexpr int n_spread = KER::n_spread;
+
+  constexpr T half_width = T(n_spread) / T(2);  // half spread width
+
+  T ker_x[n_spread];
+  T ker_y[n_spread];
+  T ker_z[n_spread];
+
+  for (int idx_p = threadIdx.x + BLOCK_SIZE * blockIdx.x; idx_p < points.size(); idx_p += BLOCK_SIZE * gridDim.x) {
+    const auto point = points[idx_p];
+
+    const T loc_x = point.coord[0] * grid.shape(0);  // px in [0, 1]
+    const T idx_init_ceil_x = calc_ceil(loc_x - half_width);
+    const IntType idx_init_x = IntType(idx_init_ceil_x);  // fine grid start index (-
+    const T x = idx_init_ceil_x - loc_x;                  // x1 in [-w/2,-w/2+1], up to rounding
+
+    const T loc_y = point.coord[1] * grid.shape(1);
+    const T idx_init_ceil_y = calc_ceil(loc_y - half_width);
+    const IntType idx_init_y = IntType(idx_init_ceil_y);
+    const T y = idx_init_ceil_y - loc_y;
+
+    const T loc_z = point.coord[2] * grid.shape(2);
+    const T idx_init_ceil_z = calc_ceil(loc_z - half_width);
+    const IntType idx_init_z = IntType(idx_init_ceil_z);
+    const T z = idx_init_ceil_z - loc_z;
+
+    for(int idx_ker = 0; idx_ker < n_spread; ++idx_ker) {
+      const T idx_ker_flt = idx_ker;
+      ker_x[idx_ker] = kernel.eval_scalar(x + idx_ker_flt);
+      ker_y[idx_ker] = kernel.eval_scalar(y + idx_ker_flt);
+      ker_z[idx_ker] = kernel.eval_scalar(z + idx_ker_flt);
+    }
+
+    auto in_val = input[point.index];
+    if (prephase_optional.size()) {
+      const auto pre = prephase_optional[point.index];
+      in_val = ComplexType<T>{in_val.x * pre.x - in_val.y * pre.y, in_val.x * pre.y + in_val.y * pre.x};
+    }
+
+    for (IntType idx_z = idx_init_z; idx_z < idx_init_z + n_spread; ++idx_z) {
+      IntType idx_z_wrap = idx_z < 0 ? idx_z + grid.shape(2)
+                                     : (idx_z > grid.shape(2) - 1 ? idx_z - grid.shape(2) : idx_z);
+      for (IntType idx_y = idx_init_y; idx_y < idx_init_y + n_spread; ++idx_y) {
+        IntType idx_y_wrap = idx_y < 0
+                                 ? idx_y + grid.shape(1)
+                                 : (idx_y > grid.shape(1) - 1 ? idx_y - grid.shape(1) : idx_y);
+        const T ker_val_yz = ker_y[idx_y - idx_init_y] * ker_z[idx_z - idx_init_z];
+        for (IntType idx_x = idx_init_x; idx_x < idx_init_x + n_spread; ++idx_x) {
+          IntType idx_x_wrap = idx_x < 0
+                                   ? idx_x + grid.shape(0)
+                                   : (idx_x > grid.shape(0) - 1 ? idx_x - grid.shape(0) : idx_x);
+
+          const T ker_val = ker_x[idx_x - idx_init_x] * ker_val_yz;
+
+          auto res = in_val;
+          res.x *= ker_val;
+          res.y *= ker_val;
+
+          auto& grid_val = grid[{idx_x_wrap, idx_y_wrap, idx_z_wrap}];
+          atomicAdd(&grid_val.x, res.x);
+          atomicAdd(&grid_val.y, res.y);
+        }
+      }
+    }
+  }
+}
+
+template <typename T, IntType DIM, int N_SPREAD>
+auto spread_dispatch(const api::DevicePropType& prop, const api::StreamType& stream,
+                     const KernelParameters<T>& param,
+                     ConstDeviceView<PartitionGroup, DIM> partition,
+                     ConstDeviceView<Point<T, DIM>, 1> points,
+                     ConstDeviceView<ComplexType<T>, 1> input,
+                     ConstDeviceView<ComplexType<T>, 1> prephase_optional,
+                     DeviceView<ComplexType<T>, DIM> grid)
+    -> void {
+  static_assert(N_SPREAD >= 2);
+  static_assert(N_SPREAD <= 16);
+
+  constexpr int block_size = 256;
+
+  const dim3 block_dim(block_size, 1, 1);
+  const auto grid_dim = kernel_launch_grid(prop, {points.size(), 1, 1}, block_dim);
+
+  if (param.n_spread == N_SPREAD) {
+    EsKernelDirect<T, N_SPREAD> kernel{param.es_beta};
+
+    if constexpr (DIM == 1) {
+      api::launch_kernel(spread_1d_kernel<decltype(kernel), T, block_size>, grid_dim, block_dim, 0,
+                         stream, kernel, points, input, prephase_optional, grid);
+    } else if constexpr (DIM == 2) {
+      api::launch_kernel(spread_2d_kernel<decltype(kernel), T, block_size>, grid_dim, block_dim, 0,
+                         stream, kernel, points, input, prephase_optional, grid);
+    } else {
+
+      api::launch_kernel(spread_3d_kernel<decltype(kernel), T, 256>, grid_dim, block_dim, 0, stream,
+                         kernel, points, input, prephase_optional, grid);
+    }
+  } else {
+    if constexpr (N_SPREAD > 2) {
+      spread_dispatch<T, DIM, N_SPREAD - 1>(prop, stream, param, partition, points, input,
+                                            prephase_optional, grid);
+    } else {
+      throw InternalError("n_spread not in [2, 16]");
+    }
+  }
+}
+
+//-------------------------------
+//     interface
+//-------------------------------
 
 template <typename T, IntType DIM>
 void spread(const api::DevicePropType& prop, const api::StreamType& stream,
@@ -457,8 +708,7 @@ void spread(const api::DevicePropType& prop, const api::StreamType& stream,
             ConstDeviceView<Point<T, DIM>, 1> points, ConstDeviceView<ComplexType<T>, 1> input,
             ConstDeviceView<ComplexType<T>, 1> prephase_optional,
             DeviceView<ComplexType<T>, DIM> grid) {
-  constexpr int block_size = PartitionGroup::width;
-  spread_dispatch<T, DIM, 16, block_size>(prop, stream, param, partition, points, input,
+  spread_dispatch<T, DIM, 16>(prop, stream, param, partition, points, input,
                                           prephase_optional, grid);
 }
 

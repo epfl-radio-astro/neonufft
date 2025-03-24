@@ -26,7 +26,7 @@ target_include_directories(neonufft_objects PRIVATE ${NEONUFFT_INCLUDE_DIRS})
 target_link_libraries(neonufft_objects PRIVATE ${NEONUFFT_EXTERNAL_LIBS})
 target_link_libraries(neonufft_objects PRIVATE ${NEONUFFT_EXTERNAL_LIBS_PUBLIC})
 target_include_directories(neonufft_objects INTERFACE $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>  $<BUILD_INTERFACE:${PROJECT_BINARY_DIR}>)
-set_target_properties(neonufft_objects PROPERTIES VISIBILITY_INLINES_HIDDEN TRUE CXX_VISIBILITY_PRESET hidden)
+# set_target_properties(neonufft_objects PROPERTIES VISIBILITY_INLINES_HIDDEN TRUE CXX_VISIBILITY_PRESET hidden)
 target_compile_options(neonufft_objects PRIVATE $<$<CXX_COMPILER_ID:GNU>:-Wno-psabi>) # no ABI warnings about C++17 compatability
 
 
@@ -40,7 +40,7 @@ target_link_libraries(neonufft PRIVATE ${NEONUFFT_EXTERNAL_LIBS})
 target_link_libraries(neonufft PUBLIC ${NEONUFFT_EXTERNAL_LIBS_PUBLIC})
 target_include_directories(neonufft INTERFACE $<INSTALL_INTERFACE:include>) # for install(EXPORT ...)
 target_include_directories(neonufft INTERFACE $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>  $<BUILD_INTERFACE:${PROJECT_BINARY_DIR}>) # for export(...)
-set_target_properties(neonufft PROPERTIES VISIBILITY_INLINES_HIDDEN TRUE CXX_VISIBILITY_PRESET hidden)
+# set_target_properties(neonufft PROPERTIES VISIBILITY_INLINES_HIDDEN TRUE CXX_VISIBILITY_PRESET hidden)
 
 # add alias target
 add_library(neonufft::neonufft ALIAS neonufft)
