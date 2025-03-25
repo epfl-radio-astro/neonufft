@@ -13,5 +13,5 @@ template <typename T, IntType DIM>
 void nuft_real(NeonufftKernelType kernel_type,
                const KernelParameters<T> &kernel_param, IntType num_in,
                std::array<const T *, DIM> loc, std::array<T, DIM> offsets,
-               std::array<T, DIM> scaling_factors, T *phi_had_aligned);
+               std::array<T, DIM> scaling_factors, T *phi_hat_aligned);
 }

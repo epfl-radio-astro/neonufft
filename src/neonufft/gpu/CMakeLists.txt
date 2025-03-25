@@ -8,6 +8,8 @@ set(NEONUFFT_SOURCE_FILES
 	kernels/spreading_kernel.cu
 	kernels/downsample_kernel.cu
 	kernels/min_max_kernel.cu
+	kernels/prephase_kernel.cu
+	kernels/postphase_f_series.cu
 	)
 
 

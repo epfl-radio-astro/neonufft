@@ -1,6 +1,6 @@
 #pragma once
 
-#include "neonufft//config.h"
+#include "neonufft/config.h"
 //---
 
 #include "neonufft/gpu/util/runtime.hpp"
@@ -38,7 +38,7 @@ struct EsKernelDirect<double, N_SPREAD> {
   constexpr static int n_spread = N_SPREAD;
 
   __device__ __forceinline__ double eval_scalar(double x) const {
-    constexpr float es_c = 4.0 / double(N_SPREAD * N_SPREAD);
+    constexpr double es_c = 4.0 / double(N_SPREAD * N_SPREAD);
     const double arg = 1.0 - es_c * x * x;
     if (arg <= 0) return 0.0;
 

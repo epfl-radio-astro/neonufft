@@ -230,12 +230,9 @@ void legendre_compute_glr1 ( int n, double *x, double *w )
   int j;
   int k;
   int l;
-  int m = 30;
   int n2;
   static double pi = 3.141592653589793;
   int s;
-  double *u;
-  double *up;
   double xp;
 
   if ( n % 2 == 1 )
@@ -249,8 +246,9 @@ void legendre_compute_glr1 ( int n, double *x, double *w )
     s = 0;
   }
 
-  u = new double[m+2];
-  up = new double[m+1];
+  constexpr int m = 30;
+  double u[m + 2];
+  double up[m + 1];
 
   dn = ( double ) n;
 
@@ -295,8 +293,6 @@ void legendre_compute_glr1 ( int n, double *x, double *w )
     w[k] = w[n-1-k];
   }
 
-  delete[] u;
-  delete[] up;
   return;
 }
 //****************************************************************************80
@@ -353,55 +349,47 @@ void legendre_compute_glr2 ( double pn0, int n, double *x1, double *d1 )
   double dn;
   int k;
   int l;
-  int m = 30;
   static double pi = 3.141592653589793;
   double t;
-  double *u;
-  double *up;
 
   t = 0.0;
-  *x1 = rk2_leg ( t, -pi/2.0, 0.0, n );
+  *x1 = rk2_leg(t, -pi / 2.0, 0.0, n);
 
-  u = new double[m+2];
-  up = new double[m+1];
+  constexpr int m = 30;
+  double u[m + 2];
+  double up[m + 1];
 
-  dn = ( double ) n;
-//
-//  U[0] and UP[0] are never used.
-//  U[M+1] is set, but not used, and UP[M] is set and not used.
-//  What gives?
-//
+  dn = (double)n;
+  //
+  //  U[0] and UP[0] are never used.
+  //  U[M+1] is set, but not used, and UP[M] is set and not used.
+  //  What gives?
+  //
   u[0] = 0.0;
   u[1] = pn0;
 
   up[0] = 0.0;
 
-  for ( k = 0; k <= m - 2; k = k + 2 )
-  {
-    dk = ( double ) k;
+  for (k = 0; k <= m - 2; k = k + 2) {
+    dk = (double)k;
 
-    u[k+2] = 0.0;
-    u[k+3] = ( dk * ( dk + 1.0 ) - dn * ( dn + 1.0 ) ) * u[k+1]
-      / (dk + 1.0) / (dk + 2.0 ); 
+    u[k + 2] = 0.0;
+    u[k + 3] = (dk * (dk + 1.0) - dn * (dn + 1.0)) * u[k + 1] / (dk + 1.0) / (dk + 2.0);
 
-    up[k+1] = 0.0;
-    up[k+2] = ( dk + 2.0 ) * u[k+3];
+    up[k + 1] = 0.0;
+    up[k + 2] = (dk + 2.0) * u[k + 3];
   }
-  
-  for ( l = 0; l < 5; l++ )
-  {
-    *x1 = *x1 - ts_mult ( u, *x1, m ) / ts_mult ( up, *x1, m-1 );
-  }
-  *d1 = ts_mult ( up, *x1, m-1 );
 
-  delete[] u;
-  delete[] up;
+  for (l = 0; l < 5; l++) {
+    *x1 = *x1 - ts_mult(u, *x1, m) / ts_mult(up, *x1, m - 1);
+  }
+  *d1 = ts_mult(up, *x1, m - 1);
 
   return;
 }
 //****************************************************************************80
 
-double ts_mult ( double *u, double h, int n )
+double ts_mult(double* u, double h, int n)
 
 //****************************************************************************80
 //
@@ -411,7 +399,7 @@ double ts_mult ( double *u, double h, int n )
 //
 //  Licensing:
 //
-//    This code is distributed under the MIT license. 
+//    This code is distributed under the MIT license.
 //
 //  Modified:
 //

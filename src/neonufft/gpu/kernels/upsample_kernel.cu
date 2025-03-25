@@ -1,4 +1,4 @@
-#include "neonufft//config.h"
+#include "neonufft/config.h"
 //---
 #include "neonufft/gpu/kernels/upsample_kernel.hpp"
 

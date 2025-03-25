@@ -1,4 +1,4 @@
-#include "neonufft//config.h"
+#include "neonufft/config.h"
 //---
 #include <algorithm>
 
@@ -486,7 +486,8 @@ __global__ static void __launch_bounds__(BLOCK_SIZE)
 
   T ker_x[n_spread];
 
-  for (int idx_p = threadIdx.x + BLOCK_SIZE * blockIdx.x; idx_p < points.size(); idx_p += BLOCK_SIZE * gridDim.x) {
+  for (IntType idx_p = threadIdx.x + BLOCK_SIZE * blockIdx.x; idx_p < points.size();
+       idx_p += BLOCK_SIZE * gridDim.x) {
     const auto point = points[idx_p];
 
     const T loc_x = point.coord[0] * grid.shape(0);  // px in [0, 1]
@@ -536,7 +537,7 @@ __global__ static void __launch_bounds__(BLOCK_SIZE)
   T ker_x[n_spread];
   T ker_y[n_spread];
 
-  for (int idx_p = threadIdx.x + BLOCK_SIZE * blockIdx.x; idx_p < points.size(); idx_p += BLOCK_SIZE * gridDim.x) {
+  for (IntType idx_p = threadIdx.x + BLOCK_SIZE * blockIdx.x; idx_p < points.size(); idx_p += BLOCK_SIZE * gridDim.x) {
     const auto point = points[idx_p];
 
     const T loc_x = point.coord[0] * grid.shape(0);  // px in [0, 1]
@@ -598,7 +599,8 @@ __global__ static void __launch_bounds__(BLOCK_SIZE)
   T ker_y[n_spread];
   T ker_z[n_spread];
 
-  for (int idx_p = threadIdx.x + BLOCK_SIZE * blockIdx.x; idx_p < points.size(); idx_p += BLOCK_SIZE * gridDim.x) {
+  for (IntType idx_p = threadIdx.x + BLOCK_SIZE * blockIdx.x; idx_p < points.size();
+       idx_p += BLOCK_SIZE * gridDim.x) {
     const auto point = points[idx_p];
 
     const T loc_x = point.coord[0] * grid.shape(0);  // px in [0, 1]

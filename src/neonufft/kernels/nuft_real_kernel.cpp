@@ -33,7 +33,7 @@ HWY_ATTR void nuft_real_kernel(const KER &kernel, IntType num_in,
                                std::array<const T *, DIM> loc,
                                std::array<T, DIM> offsets,
                                std::array<T, DIM> scaling_factors,
-                               T *HWY_RESTRICT phi_had_aligned) {
+                               T *HWY_RESTRICT phi_hat_aligned) {
 
   constexpr auto N_SPREAD = KER::N_SPREAD;
   constexpr auto N_QUAD = N_SPREAD + (N_SPREAD % 2);
@@ -83,7 +83,7 @@ HWY_ATTR void nuft_real_kernel(const KER &kernel, IntType num_in,
       v_prod = hn::Mul(v_prod, v_sum);
     }
 
-    hn::Store(v_prod, d, phi_had_aligned + idx_in);
+    hn::Store(v_prod, d, phi_hat_aligned + idx_in);
   }
 
   for (; idx_in < num_in; ++idx_in) {
@@ -100,7 +100,7 @@ HWY_ATTR void nuft_real_kernel(const KER &kernel, IntType num_in,
       }
       prod *= sum;
     }
-    phi_had_aligned[idx_in] = prod;
+    phi_hat_aligned[idx_in] = prod;
   }
 }
 
@@ -109,7 +109,7 @@ HWY_ATTR void
 nuft_real_dispatch(NeonufftKernelType kernel_type,
                    const KernelParameters<T> &kernel_param, IntType num_in,
                    std::array<const T *, DIM> loc, std::array<T, DIM> offsets,
-                   std::array<T, DIM> scaling_factors, T *phi_had_aligned) {
+                   std::array<T, DIM> scaling_factors, T *phi_hat_aligned) {
   static_assert(N_SPREAD >= 2);
   static_assert(N_SPREAD <= 16);
 
@@ -118,16 +118,16 @@ nuft_real_dispatch(NeonufftKernelType kernel_type,
       if (kernel_param.approximation && kernel_param.upsampfac == 2.0) {
         EsKernelHorner200<T, N_SPREAD> kernel(kernel_param);
         nuft_real_kernel<DIM, decltype(kernel), T>(
-            kernel, num_in, loc, offsets, scaling_factors, phi_had_aligned);
+            kernel, num_in, loc, offsets, scaling_factors, phi_hat_aligned);
 
       } else if (kernel_param.approximation && kernel_param.upsampfac == 1.25) {
         EsKernelHorner125<T, N_SPREAD> kernel(kernel_param);
         nuft_real_kernel<DIM, decltype(kernel), T>(
-            kernel, num_in, loc, offsets, scaling_factors, phi_had_aligned);
+            kernel, num_in, loc, offsets, scaling_factors, phi_hat_aligned);
       } else {
         EsKernelDirect<T, N_SPREAD> kernel(kernel_param);
         nuft_real_kernel<DIM, decltype(kernel), T>(
-            kernel, num_in, loc, offsets, scaling_factors, phi_had_aligned);
+            kernel, num_in, loc, offsets, scaling_factors, phi_hat_aligned);
       }
     } else {
       throw InternalError("Unknown kernel type");
@@ -136,7 +136,7 @@ nuft_real_dispatch(NeonufftKernelType kernel_type,
     if constexpr (N_SPREAD > 2) {
       nuft_real_dispatch<DIM, T, N_SPREAD - 1>(
           kernel_type, kernel_param, num_in, loc, offsets, scaling_factors,
-          phi_had_aligned);
+          phi_hat_aligned);
     } else {
       throw InternalError("n_spread not in [2, 16]");
     }
@@ -150,9 +150,9 @@ HWY_ATTR void nuft_real_float(NeonufftKernelType kernel_type,
                               std::array<const float *, DIM> loc,
                               std::array<float, DIM> offsets,
                               std::array<float, DIM> scaling_factors,
-                              float *phi_had_aligned) {
+                              float *phi_hat_aligned) {
   nuft_real_dispatch<DIM, float, 16>(kernel_type, kernel_param, num_in, loc,
-                                     offsets, scaling_factors, phi_had_aligned);
+                                     offsets, scaling_factors, phi_hat_aligned);
 }
 
 template <IntType DIM>
@@ -162,10 +162,10 @@ HWY_ATTR void nuft_real_double(NeonufftKernelType kernel_type,
                                std::array<const double *, DIM> loc,
                                std::array<double, DIM> offsets,
                                std::array<double, DIM> scaling_factors,
-                               double *phi_had_aligned) {
+                               double *phi_hat_aligned) {
   nuft_real_dispatch<DIM, double, 16>(kernel_type, kernel_param, num_in, loc,
                                       offsets, scaling_factors,
-                                      phi_had_aligned);
+                                      phi_hat_aligned);
 }
 
 } // namespace HWY_NAMESPACE
@@ -177,15 +177,15 @@ template <typename T, IntType DIM>
 void nuft_real(NeonufftKernelType kernel_type,
                const KernelParameters<T> &kernel_param, IntType num_in,
                std::array<const T *, DIM> loc, std::array<T, DIM> offsets,
-               std::array<T, DIM> scaling_factors, T *phi_had_aligned) {
+               std::array<T, DIM> scaling_factors, T *phi_hat_aligned) {
   if constexpr (std::is_same_v<T, float>) {
     NEONUFFT_EXPORT_AND_DISPATCH_T(nuft_real_float<DIM>)
     (kernel_type, kernel_param, num_in, loc, offsets, scaling_factors,
-     phi_had_aligned);
+     phi_hat_aligned);
   } else {
     NEONUFFT_EXPORT_AND_DISPATCH_T(nuft_real_double<DIM>)
     (kernel_type, kernel_param, num_in, loc, offsets, scaling_factors,
-     phi_had_aligned);
+     phi_hat_aligned);
   }
 }
 
@@ -195,7 +195,7 @@ template void nuft_real<float, 1>(NeonufftKernelType kernel_type,
                                   std::array<const float *, 1> loc,
                                   std::array<float, 1> offsets,
                                   std::array<float, 1> scaling_factors,
-                                  float *phi_had_aligned);
+                                  float *phi_hat_aligned);
 
 template void nuft_real<float, 2>(NeonufftKernelType kernel_type,
                                   const KernelParameters<float> &kernel_param,
@@ -203,7 +203,7 @@ template void nuft_real<float, 2>(NeonufftKernelType kernel_type,
                                   std::array<const float *, 2> loc,
                                   std::array<float, 2> offsets,
                                   std::array<float, 2> scaling_factors,
-                                  float *phi_had_aligned);
+                                  float *phi_hat_aligned);
 
 template void nuft_real<float, 3>(NeonufftKernelType kernel_type,
                                   const KernelParameters<float> &kernel_param,
@@ -211,7 +211,7 @@ template void nuft_real<float, 3>(NeonufftKernelType kernel_type,
                                   std::array<const float *, 3> loc,
                                   std::array<float, 3> offsets,
                                   std::array<float, 3> scaling_factors,
-                                  float *phi_had_aligned);
+                                  float *phi_hat_aligned);
 
 template void nuft_real<double, 1>(NeonufftKernelType kernel_type,
                                    const KernelParameters<double> &kernel_param,
@@ -219,7 +219,7 @@ template void nuft_real<double, 1>(NeonufftKernelType kernel_type,
                                    std::array<const double *, 1> loc,
                                    std::array<double, 1> offsets,
                                    std::array<double, 1> scaling_factors,
-                                   double *phi_had_aligned);
+                                   double *phi_hat_aligned);
 
 template void nuft_real<double, 2>(NeonufftKernelType kernel_type,
                                    const KernelParameters<double> &kernel_param,
@@ -227,7 +227,7 @@ template void nuft_real<double, 2>(NeonufftKernelType kernel_type,
                                    std::array<const double *, 2> loc,
                                    std::array<double, 2> offsets,
                                    std::array<double, 2> scaling_factors,
-                                   double *phi_had_aligned);
+                                   double *phi_hat_aligned);
 
 template void nuft_real<double, 3>(NeonufftKernelType kernel_type,
                                    const KernelParameters<double> &kernel_param,
@@ -235,7 +235,7 @@ template void nuft_real<double, 3>(NeonufftKernelType kernel_type,
                                    std::array<const double *, 3> loc,
                                    std::array<double, 3> offsets,
                                    std::array<double, 3> scaling_factors,
-                                   double *phi_had_aligned);
+                                   double *phi_hat_aligned);
 
 #endif
 

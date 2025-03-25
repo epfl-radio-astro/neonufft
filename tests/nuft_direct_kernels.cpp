@@ -12,7 +12,7 @@
 
 // Generates code for every target that this compiler can support.
 #undef HWY_TARGET_INCLUDE
-#define HWY_TARGET_INCLUDE "nuft_direct_kernels.cpp" // this file
+#define HWY_TARGET_INCLUDE "../tests/nuft_direct_kernels.cpp" // this file
 
 #include "neonufft/kernels/hwy_dispatch.hpp"
 

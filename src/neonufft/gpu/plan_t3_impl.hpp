@@ -11,17 +11,19 @@
 #include "contrib/es_kernel/util.hpp"
 #include "neonufft/es_kernel_param.hpp"
 #include "neonufft/exceptions.hpp"
-#include "neonufft/gpu//util/fft_grid.hpp"
 #include "neonufft/gpu/device_allocator.hpp"
 #include "neonufft/gpu/kernels/downsample_kernel.hpp"
 #include "neonufft/gpu/kernels/interpolation_kernel.hpp"
 #include "neonufft/gpu/kernels/min_max_kernel.hpp"
+#include "neonufft/gpu/kernels/postphase_f_series.hpp"
+#include "neonufft/gpu/kernels/prephase_kernel.hpp"
 #include "neonufft/gpu/kernels/rescale_loc_kernel.hpp"
 #include "neonufft/gpu/kernels/spreading_kernel.hpp"
 #include "neonufft/gpu/kernels/upsample_kernel.hpp"
 #include "neonufft/gpu/memory/copy.hpp"
 #include "neonufft/gpu/memory/device_array.hpp"
 #include "neonufft/gpu/plan.hpp"
+#include "neonufft/gpu/util/fft_grid.hpp"
 #include "neonufft/gpu/util/partition_group.hpp"
 #include "neonufft/gpu/util/runtime_api.hpp"
 #include "neonufft/kernels/compute_postphase_kernel.hpp"
@@ -129,28 +131,22 @@ public:
   }
 
   void set_input_points(IntType num_in, std::array<const T*, DIM> input_points) {
+    StackArray<ConstDeviceView<T, 1>, DIM> input_point_views;
+    for (IntType d = 0; d < DIM; ++d) {
+      input_point_views[d] = ConstDeviceView<T, 1>(input_points[d], num_in, 1);
+    }
+
     // compute prephase
     if (grid_info_.output_offsets[0] != 0 ||
         grid_info_.output_offsets[std::min<IntType>(1, DIM - 1)] != 0 ||
         grid_info_.output_offsets[std::min<IntType>(2, DIM - 1)] != 0) {
       prephase_.reset(num_in, device_alloc_);
 
-      HostArray<std::complex<T>, 1> prephase_host(prephase_.shape());
 
-      HostArray<T, 2> input_array_host({num_in, DIM});
-      std::array<const T*, DIM> input_points_host;
-      for(IntType d = 0; d < DIM; ++d) {
-        memcopy(ConstDeviceView<T, 1>(input_points[d], num_in, 1), input_array_host.slice_view(d),
-                stream_);
-        input_points_host[d] = input_array_host.slice_view(d).data();
-      }
-      api::stream_synchronize(stream_);
-
-      neonufft::compute_prephase<T, DIM>(sign_, num_in, input_points_host,
-                                         grid_info_.output_offsets, prephase_host.data());
-      memcopy(prephase_host, prephase_, stream_);
-      api::stream_synchronize(stream_);
+      gpu::compute_prephase<T, DIM>(device_prop_, stream_, sign_, input_point_views,
+                                    grid_info_.output_offsets, prephase_);
     }
+
 
     // first translate rescale for grid spacing adjustment, then scale points to
     // [0, 1]
@@ -162,16 +158,16 @@ public:
       rescaled_input_points_.reset(num_in, device_alloc_);
     }
 
-    StackArray<ConstDeviceView<T, 1>, DIM> loc_views;
-    for(IntType d = 0; d <DIM; ++d) {
-      loc_views[d] = ConstDeviceView<T, 1>(input_points[d], num_in, 1);
-    }
-    rescale_and_permut_t3<T, DIM>(device_prop_, stream_, loc_views, spread_grid_.shape(),
-                                  grid_info_.input_offsets, input_scaling_factors, input_partition_,
-                                  rescaled_input_points_);
+    // StackArray<ConstDeviceView<T, 1>, DIM> loc_views;
+    // for(IntType d = 0; d <DIM; ++d) {
+    //   loc_views[d] = ConstDeviceView<T, 1>(input_points[d], num_in, 1);
+    // }
+    // rescale_and_permut_t3<T, DIM>(device_prop_, stream_, loc_views, spread_grid_.shape(),
+    //                               grid_info_.input_offsets, input_scaling_factors, input_partition_,
+    //                               rescaled_input_points_);
 
-    // rescale_t3<T, DIM>(device_prop_, stream_, loc_views, spread_grid_.shape(),
-    //                    grid_info_.input_offsets, input_scaling_factors, rescaled_input_points_);
+    rescale_t3<T, DIM>(device_prop_, stream_, input_point_views, spread_grid_.shape(),
+                       grid_info_.input_offsets, input_scaling_factors, rescaled_input_points_);
   }
 
   void set_output_points(IntType num_out, std::array<const T*, DIM> output_points) {
@@ -203,42 +199,11 @@ public:
                        grid_info_.output_offsets, output_scaling_factors, rescaled_output_points_);
 
     // compute postphase with correction factors
-    {
+    postphase_.reset(num_out, device_alloc_);
 
-      HostArray<T, 2> output_array_host({num_out, DIM});
-      std::array<const T*, DIM> output_points_host;
-      for(IntType d = 0; d < DIM; ++d) {
-        memcopy(ConstDeviceView<T, 1>(output_points[d], num_out, 1),
-                output_array_host.slice_view(d), stream_);
-        output_points_host[d] = output_array_host.slice_view(d).data();
-      }
-      api::stream_synchronize(stream_);
-
-      HostArray<T, 1> phi_hat_host(num_out);
-      postphase_.reset(num_out, device_alloc_);
-      HostArray<std::complex<T>, 1> postphase_host(postphase_.shape());
-      neonufft::nuft_real<T, DIM>(opt_.kernel_type, kernel_param_, num_out, output_points_host,
-                                  grid_info_.output_offsets, output_scaling_factors,
-                                  phi_hat_host.data());
-
-      if (grid_info_.input_offsets[0] != 0 ||
-          grid_info_.input_offsets[std::min<IntType>(1, DIM - 1)] != 0 ||
-          grid_info_.input_offsets[std::min<IntType>(2, DIM - 1)] != 0) {
-        neonufft::compute_postphase<T, DIM>(sign_, num_out, phi_hat_host.data(), output_points_host,
-                                  grid_info_.input_offsets, grid_info_.output_offsets,
-                                  postphase_host.data());
-      } else {
-        // just store inverse of phi_hat_host
-        const T* cf_ptr = phi_hat_host.data();
-        auto pp_ptr = postphase_host.data();
-        for (IntType i = 0; i < num_out; ++i) {
-          pp_ptr[i] = std::complex<T>{1 / cf_ptr[i], 0};
-        }
-      }
-
-      memcopy(postphase_host, postphase_, stream_);
-      api::stream_synchronize(stream_);
-    }
+    gpu::postphase<T, DIM>(device_prop_, stream_, kernel_param_, sign_, loc_views,
+                           grid_info_.input_offsets, grid_info_.output_offsets,
+                           output_scaling_factors, postphase_);
   }
 
   void transform(ComplexType<T>* out) {
