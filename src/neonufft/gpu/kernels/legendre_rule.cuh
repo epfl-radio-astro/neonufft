@@ -1,5 +1,17 @@
 #pragma once
 
+/*
+  Taken from:
+    https://people.sc.fsu.edu/~jburkardt/cpp_src/legendre_rule_fast/legendre_rule_fast.html
+
+  Licensing:
+
+    This code is distributed under the MIT license.
+
+
+  Modified for GPU usage.
+*/
+
 #include "neonufft/config.h"
 //---
 
