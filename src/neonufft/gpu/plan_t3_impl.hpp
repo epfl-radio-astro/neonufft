@@ -15,7 +15,7 @@
 #include "neonufft/gpu/kernels/downsample_kernel.hpp"
 #include "neonufft/gpu/kernels/interpolation_kernel.hpp"
 #include "neonufft/gpu/kernels/min_max_kernel.hpp"
-#include "neonufft/gpu/kernels/postphase_f_series.hpp"
+#include "neonufft/gpu/kernels/postphase_kernel.hpp"
 #include "neonufft/gpu/kernels/prephase_kernel.hpp"
 #include "neonufft/gpu/kernels/rescale_loc_kernel.hpp"
 #include "neonufft/gpu/kernels/spreading_kernel.hpp"

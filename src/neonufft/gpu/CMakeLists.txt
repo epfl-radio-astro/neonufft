@@ -9,7 +9,7 @@ set(NEONUFFT_SOURCE_FILES
 	kernels/downsample_kernel.cu
 	kernels/min_max_kernel.cu
 	kernels/prephase_kernel.cu
-	kernels/postphase_f_series.cu
+	kernels/postphase_kernel.cu
 	)
 
 
