@@ -16,6 +16,7 @@
 #include "neonufft/gpu/kernels/upsample_kernel.hpp"
 #include "neonufft/gpu/kernels/rescale_loc_kernel.hpp"
 #include "neonufft/gpu/kernels/downsample_kernel.hpp"
+#include "neonufft/gpu/kernels/fseries_kernel.hpp"
 #include "neonufft/gpu/memory/copy.hpp"
 #include "neonufft/gpu/memory/device_array.hpp"
 #include "neonufft/gpu/plan.hpp"
@@ -185,21 +186,14 @@ public:
 
       // recompute correction factor for kernel windowing
       // we compute the inverse to use multiplication during execution
-
-      std::array<HostArray<T, 1>, DIM> correction_factors_host;
       for (std::size_t d = 0; d < DIM; ++d) {
         auto correction_fact_size = fft_grid_size[d] / 2 + 1;
         correction_factors_[d].reset(correction_fact_size, device_alloc_);
-        correction_factors_host[d].reset(correction_fact_size);
-
-        contrib::onedim_fseries_kernel_inverse(fft_grid_size[d], correction_factors_host[d].data(),
-                                               kernel_param_.n_spread, kernel_param_.es_halfwidth,
-                                               kernel_param_.es_beta, kernel_param_.es_c);
-        gpu::memcopy(correction_factors_host[d], correction_factors_[d], stream_);
+        gpu::fseries_inverse<T>(device_prop_, stream_, kernel_param_, fft_grid_.shape(d),
+                                correction_factors_[d]);
       }
-      // make sure copies are done before correction_factors_host is destroyed
-      api::stream_synchronize(stream_);
 
+      //TODO: remove?
       typename decltype(partition_)::IndexType part_grid_size;
       for (std::size_t d = 0; d < DIM; ++d) {
         part_grid_size[d] = (fft_grid_.view().shape(d) + gpu::PartitionGroup::width - 1) /

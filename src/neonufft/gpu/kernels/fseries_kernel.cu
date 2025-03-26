@@ -18,7 +18,7 @@
 namespace neonufft {
 namespace gpu {
 
-static __device__ __forceinline__ float calc_cos(float x) { return cosf(x); }
+static __device__ __forceinline__ float calc_cos(float x) { return __cosf(x); }
 static __device__ __forceinline__ double calc_cos(double x) { return cos(x); }
 
 template <typename T, typename KER, int BLOCK_SIZE>
@@ -36,8 +36,8 @@ __global__ static void __launch_bounds__(BLOCK_SIZE)
   const IntType n_out = grid_size / 2 + 1;
   assert(n_out == fseries_inverse.size());
 
-  __shared__ double nodes_dp[2 * N_QUAD];
-  __shared__ double weights[2 * N_QUAD];
+  __shared__ T nodes_dp[2 * N_QUAD];
+  __shared__ T weights[2 * N_QUAD];
   __shared__ T phases[N_QUAD];
   __shared__ T kernel_values[N_QUAD];
 

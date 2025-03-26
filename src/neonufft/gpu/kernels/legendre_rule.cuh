@@ -22,7 +22,8 @@
 namespace neonufft {
 namespace gpu {
 
-__device__ static double ts_mult(double* u, double h, int n)
+template<typename T>
+__device__ static T ts_mult(T* u, T h, int n)
 
 //****************************************************************************80
 //
@@ -45,22 +46,22 @@ __device__ static double ts_mult(double* u, double h, int n)
 //
 //  Parameters:
 //
-//    Input, double U[N+1], the polynomial coefficients.
+//    Input, T U[N+1], the polynomial coefficients.
 //    U[0] is ignored.
 //
-//    Input, double H, the polynomial argument.
+//    Input, T H, the polynomial argument.
 //
 //    Input, int N, the number of terms to compute.
 //
-//    Output, double TS_MULT, the value of the polynomial.
+//    Output, T TS_MULT, the value of the polynomial.
 //
 {
-  double hk;
+  T hk;
   int k;
-  double ts;
+  T ts;
 
-  ts = 0.0;
-  hk = 1.0;
+  ts = T(0);
+  hk = T(1);
   for (k = 1; k <= n; k++) {
     ts = ts + u[k] * hk;
     hk = hk * h;
@@ -68,7 +69,8 @@ __device__ static double ts_mult(double* u, double h, int n)
   return ts;
 }
 
-__device__ static double rk2_leg(double t1, double t2, double x, int n)
+template<typename T>
+__device__ static T rk2_leg(T t1, T t2, T x, int n)
 
 //****************************************************************************80
 //
@@ -91,45 +93,46 @@ __device__ static double rk2_leg(double t1, double t2, double x, int n)
 //
 //  Parameters:
 //
-//    Input, double T1, T2, the range of the integration interval.
+//    Input, T T1, T2, the range of the integration interval.
 //
-//    Input, double X, the value of X at T1.
+//    Input, T X, the value of X at T1.
 //
 //    Input, int N, the number of steps to take.
 //
-//    Output, double RK2_LEG, the value of X at T2.
+//    Output, T RK2_LEG, the value of X at T2.
 //
 {
-  double f;
-  double h;
+  T f;
+  T h;
   int j;
-  double k1;
-  double k2;
+  T k1;
+  T k2;
   int m = 10;
-  double snn1;
-  double t;
+  T snn1;
+  T t;
 
-  h = (t2 - t1) / (double)m;
-  snn1 = std::sqrt((double)(n * (n + 1)));
+  h = (t2 - t1) / (T)m;
+  snn1 = std::sqrt((T)(n * (n + 1)));
   t = t1;
 
   for (j = 0; j < m; j++) {
-    f = (1.0 - x) * (1.0 + x);
-    k1 = -h * f / (snn1 * std::sqrt(f) - 0.5 * x * std::sin(2.0 * t));
+    f = (T(1) - x) * (T(1) + x);
+    k1 = -h * f / (snn1 * std::sqrt(f) - T(0.5) * x * std::sin(T(2) * t));
     x = x + k1;
 
     t = t + h;
 
-    f = (1.0 - x) * (1.0 + x);
-    k2 = -h * f / (snn1 * std::sqrt(f) - 0.5 * x * std::sin(2.0 * t));
-    x = x + 0.5 * (k2 - k1);
+    f = (T(1) - x) * (T(1) + x);
+    k2 = -h * f / (snn1 * std::sqrt(f) - T(0.5) * x * std::sin(T(2) * t));
+    x = x + T(0.5) * (k2 - k1);
   }
   return x;
 }
 
 //****************************************************************************80
 
-__device__ static void legendre_compute_glr0(int n, double* p, double* pp)
+template<typename T>
+__device__ static void legendre_compute_glr0(int n, T* p, T* pp)
 
 //****************************************************************************80
 //
@@ -161,26 +164,26 @@ __device__ static void legendre_compute_glr0(int n, double* p, double* pp)
 //
 //    Input, int N, the order of the Legendre polynomial.
 //
-//    Output, double *P, *PP, the value of the N-th Legendre polynomial
+//    Output, T *P, *PP, the value of the N-th Legendre polynomial
 //    and its derivative at 0.
 //
 {
-  double dk;
+  T dk;
   int k;
-  double pm1;
-  double pm2;
-  double ppm1;
-  double ppm2;
+  T pm1;
+  T pm2;
+  T ppm1;
+  T ppm2;
 
-  pm2 = 0.0;
-  pm1 = 1.0;
-  ppm2 = 0.0;
-  ppm1 = 0.0;
+  pm2 = T(0);
+  pm1 = T(1);
+  ppm2 = T(0);
+  ppm1 = T(0);
 
   for (k = 0; k < n; k++) {
-    dk = (double)k;
-    *p = -dk * pm2 / (dk + 1.0);
-    *pp = ((2.0 * dk + 1.0) * pm1 - dk * ppm2) / (dk + 1.0);
+    dk = (T)k;
+    *p = -dk * pm2 / (dk + T(1));
+    *pp = ((T(2) * dk + T(1)) * pm1 - dk * ppm2) / (dk + T(1));
     pm2 = pm1;
     pm1 = *p;
     ppm2 = ppm1;
@@ -190,7 +193,8 @@ __device__ static void legendre_compute_glr0(int n, double* p, double* pp)
 }
 //****************************************************************************80
 
-__device__ static void legendre_compute_glr1(int n, double* __restrict__ x, double* __restrict__ w)
+template<typename T>
+__device__ static void legendre_compute_glr1(int n, T* __restrict__ x, T* __restrict__ w)
 
 //****************************************************************************80
 //
@@ -228,11 +232,11 @@ __device__ static void legendre_compute_glr1(int n, double* __restrict__ x, doub
 //
 //    Input, int N, the order of the Legendre polynomial.
 //
-//    Input/output, double X[N].  On input, a starting value
+//    Input/output, T X[N].  On input, a starting value
 //    has been set in one entry.  On output, the roots of the Legendre
 //    polynomial.
 //
-//    Input/output, double W[N].  On input, a starting value
+//    Input/output, T W[N].  On input, a starting value
 //    has been set in one entry.  On output, the derivatives of the Legendre
 //    polynomial at the zeros.
 //
@@ -241,15 +245,15 @@ __device__ static void legendre_compute_glr1(int n, double* __restrict__ x, doub
 //    Local, int M, the number of terms in the Taylor expansion.
 //
 {
-  double dk;
-  double dn;
-  double h;
+  T dk;
+  T dn;
+  T h;
   int j;
   int k;
   int l;
   int n2;
   int s;
-  double xp;
+  T xp;
 
   if (n % 2 == 1) {
     n2 = (n - 1) / 2 - 1;
@@ -260,31 +264,31 @@ __device__ static void legendre_compute_glr1(int n, double* __restrict__ x, doub
   }
 
   constexpr int m = 30;
-  double u[m + 2];
-  double up[m + 1];
+  T u[m + 2];
+  T up[m + 1];
 
-  dn = (double)n;
+  dn = (T)n;
 
   for (j = n2 + 1; j < n - 1; j++) {
     xp = x[j];
 
-    h = rk2_leg(math::pi<double> / 2.0, -math::pi<double> / 2.0, xp, n) - xp;
+    h = rk2_leg(math::pi<T> / T(2), -math::pi<T> / T(2), xp, n) - xp;
 
-    u[0] = 0.0;
-    u[1] = 0.0;
+    u[0] = T(0);
+    u[1] = T(0);
     u[2] = w[j];
 
-    up[0] = 0.0;
+    up[0] = T(0);
     up[1] = u[2];
 
     for (k = 0; k <= m - 2; k++) {
-      dk = (double)k;
+      dk = (T)k;
 
-      u[k + 3] = (2.0 * xp * (dk + 1.0) * u[k + 2] +
-                  (dk * (dk + 1.0) - dn * (dn + 1.0)) * u[k + 1] / (dk + 1.0)) /
-                 (1.0 - xp) / (1.0 + xp) / (dk + 2.0);
+      u[k + 3] = (T(2) * xp * (dk + T(1)) * u[k + 2] +
+                  (dk * (dk + T(1)) - dn * (dn + T(1))) * u[k + 1] / (dk + T(1))) /
+                 (T(1) - xp) / (T(1) + xp) / (dk + T(2));
 
-      up[k + 2] = (dk + 2.0) * u[k + 3];
+      up[k + 2] = (dk + T(2)) * u[k + 3];
     }
 
     for (l = 0; l < 5; l++) {
@@ -304,8 +308,9 @@ __device__ static void legendre_compute_glr1(int n, double* __restrict__ x, doub
 }
 //****************************************************************************80
 
-__device__ static void legendre_compute_glr2(double pn0, int n, double* __restrict__ x1,
-                                             double* __restrict__ d1)
+template<typename T>
+__device__ static void legendre_compute_glr2(T pn0, int n, T* __restrict__ x1,
+                                             T* __restrict__ d1)
 
 //****************************************************************************80
 //
@@ -339,52 +344,52 @@ __device__ static void legendre_compute_glr2(double pn0, int n, double* __restri
 //
 //  Parameters:
 //
-//    Input, double PN0, the value of the N-th Legendre polynomial
+//    Input, T PN0, the value of the N-th Legendre polynomial
 //    at 0.
 //
 //    Input, int N, the order of the Legendre polynomial.
 //
-//    Output, double *X1, the first real root.
+//    Output, T *X1, the first real root.
 //
-//    Output, double *D1, the derivative at X1.
+//    Output, T *D1, the derivative at X1.
 //
 //  Local Parameters:
 //
 //    Local, int M, the number of terms in the Taylor expansion.
 //
 {
-  double dk;
-  double dn;
+  T dk;
+  T dn;
   int k;
   int l;
-  double t;
+  T t;
 
   constexpr int m = 30;
-  double u[m + 2];
-  double up[m + 1];
+  T u[m + 2];
+  T up[m + 1];
 
-  t = 0.0;
-  *x1 = rk2_leg(t, -math::pi<double> / 2.0, 0.0, n);
+  t = T(0);
+  *x1 = rk2_leg(t, -math::pi<T> / T(2), T(0), n);
 
-  dn = (double)n;
+  dn = (T)n;
   //
   //  U[0] and UP[0] are never used.
   //  U[M+1] is set, but not used, and UP[M] is set and not used.
   //  What gives?
   //
-  u[0] = 0.0;
+  u[0] = T(0);
   u[1] = pn0;
 
-  up[0] = 0.0;
+  up[0] = T(0);
 
   for (k = 0; k <= m - 2; k = k + 2) {
-    dk = (double)k;
+    dk = (T)k;
 
-    u[k + 2] = 0.0;
-    u[k + 3] = (dk * (dk + 1.0) - dn * (dn + 1.0)) * u[k + 1] / (dk + 1.0) / (dk + 2.0);
+    u[k + 2] = T(0);
+    u[k + 3] = (dk * (dk + T(1)) - dn * (dn + T(1))) * u[k + 1] / (dk + T(1)) / (dk + T(2));
 
-    up[k + 1] = 0.0;
-    up[k + 2] = (dk + 2.0) * u[k + 3];
+    up[k + 1] = T(0);
+    up[k + 2] = (dk + T(2)) * u[k + 3];
   }
 
   for (l = 0; l < 5; l++) {
@@ -396,7 +401,8 @@ __device__ static void legendre_compute_glr2(double pn0, int n, double* __restri
 }
 //****************************************************************************80
 
-__device__ static void legendre_compute_glr(int n, double* __restrict__ x, double* __restrict__ w)
+template<typename T>
+__device__ static void legendre_compute_glr(int n, T* __restrict__ x, T* __restrict__ w)
 
 //****************************************************************************80
 //
@@ -428,14 +434,14 @@ __device__ static void legendre_compute_glr(int n, double* __restrict__ x, doubl
 //
 //    Input, int N, the order.
 //
-//    Output, double X[N], the abscissas.
+//    Output, T X[N], the abscissas.
 //
-//    Output, double W[N], the weights.
+//    Output, T W[N], the weights.
 //
 {
   if (threadIdx.x == 0) {
-    double p;
-    double pp;
+    T p;
+    T pp;
 
     //
     //  Get the value and derivative of the N-th Legendre polynomial at 0.
@@ -465,18 +471,18 @@ __device__ static void legendre_compute_glr(int n, double* __restrict__ x, doubl
   __syncthreads();
 
   for (int i = threadIdx.x; i < n; i += blockDim.x) {
-    w[i] = 2.0 / (1.0 - x[i]) / (1.0 + x[i]) / w[i] / w[i];
+    w[i] = T(2) / (T(1) - x[i]) / (T(1) + x[i]) / w[i] / w[i];
   }
 
   __syncthreads();
 
-  double w_sum = 0.0;
+  T w_sum = T(0);
   for (int i = 0; i < n; i++) {
     w_sum = w_sum + w[i];
   }
 
   for (int i = threadIdx.x; i < n; i += blockDim.x) {
-    w[i] = 2.0 * w[i] / w_sum;
+    w[i] = T(2) * w[i] / w_sum;
   }
   __syncthreads();
 }

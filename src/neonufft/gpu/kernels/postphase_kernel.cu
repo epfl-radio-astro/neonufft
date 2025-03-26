@@ -35,8 +35,8 @@ __global__ static void __launch_bounds__(BLOCK_SIZE)
 
   static_assert(BLOCK_SIZE >= N_QUAD);
 
-  __shared__ double nodes_dp[2 * N_QUAD];
-  __shared__ double weights[2 * N_QUAD];
+  __shared__ T nodes_dp[2 * N_QUAD];
+  __shared__ T weights[2 * N_QUAD];
   __shared__ T kernel_values[N_QUAD];
   __shared__ T nodes[N_QUAD];
 
