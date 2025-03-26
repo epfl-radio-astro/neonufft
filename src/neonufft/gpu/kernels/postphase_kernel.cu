@@ -38,7 +38,7 @@ __global__ static void __launch_bounds__(BLOCK_SIZE)
   __shared__ double nodes_dp[2 * N_QUAD];
   __shared__ double weights[2 * N_QUAD];
   __shared__ T kernel_values[N_QUAD];
-  __shared__ T nodes[2 * N_QUAD];
+  __shared__ T nodes[N_QUAD];
 
   legendre_compute_glr(2 * N_QUAD, nodes_dp, weights);
 
