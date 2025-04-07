@@ -161,6 +161,21 @@ inline auto make_plan_many(ARGS&&... args) -> void {
 }
 
 template <typename... ARGS>
+inline auto make_plan_1d(ARGS&&... args) -> void {
+  check_result(GPU_FFT_PREFIX(MakePlan1d)(std::forward<ARGS>(args)...));
+}
+
+template <typename... ARGS>
+inline auto make_plan_2d(ARGS&&... args) -> void {
+  check_result(GPU_FFT_PREFIX(MakePlan2d)(std::forward<ARGS>(args)...));
+}
+
+template <typename... ARGS>
+inline auto make_plan_3d(ARGS&&... args) -> void {
+  check_result(GPU_FFT_PREFIX(MakePlan3d)(std::forward<ARGS>(args)...));
+}
+
+template <typename... ARGS>
 inline auto set_work_area(ARGS&&... args) -> void {
   check_result(GPU_FFT_PREFIX(SetWorkArea)(std::forward<ARGS>(args)...));
 }

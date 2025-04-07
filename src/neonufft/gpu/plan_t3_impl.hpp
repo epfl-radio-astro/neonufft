@@ -66,7 +66,9 @@ public:
         std::reduce(grid_info.fft_grid_size.begin(), grid_info.fft_grid_size.end(), 1,
                     std::multiplies<IntType>());
 
-    return sizeof(ComplexType<T>) * (total_spread_grid_size + total_fft_grid_size);
+    // We multiply the fft grid size with 2, because cufft will require a workspace area of equal
+    // size for in-place transforms
+    return sizeof(ComplexType<T>) * (total_spread_grid_size + 2 * total_fft_grid_size);
   }
 
   PlanT3Impl(Options opt, int sign, IntType num_in, std::array<const T*, DIM> input_points,
