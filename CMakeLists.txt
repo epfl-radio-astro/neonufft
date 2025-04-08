@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.20 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.21 FATAL_ERROR)
 file(READ "VERSION" NEONUFFT_VERSION)
 string(STRIP ${NEONUFFT_VERSION} NEONUFFT_VERSION)
 project(neonufft LANGUAGES CXX VERSION "${NEONUFFT_VERSION}")
@@ -72,7 +72,6 @@ if(NEONUFFT_GPU)
 		set(NEONUFFT_CUDA ON)
 	elseif(NEONUFFT_GPU STREQUAL "ROCM")
 		set(NEONUFFT_ROCM ON)
-		set(NEONUFFT_MAGMA ON)
 	else()
 		message(FATAL_ERROR "Invalid GPU backend")
 	endif()
@@ -138,15 +137,21 @@ endif()
 
 if(NEONUFFT_CUDA)
 	enable_language(CUDA)
-	find_package(CUDAToolkit REQUIRED)
+	find_package(CUDAToolkit MODULE REQUIRED)
 
 	list(APPEND NEONUFFT_GPU_EXTERNAL_LIBS CUDA::cufft)
 	list(APPEND NEONUFFT_GPU_EXTERNAL_LIBS_PUBLIC CUDA::cudart)
 endif()
 
 if(NEONUFFT_ROCM)
-  # find_package(hipcub CONFIG REQUIRED)
-  message(FATAL_ERROR "ROCM backend not yet implemented")
+  enable_language(HIP)
+
+  find_package(hip CONFIG REQUIRED)
+  find_package(hipfft CONFIG REQUIRED)
+  find_package(hipcub CONFIG REQUIRED)
+
+  list(APPEND NEONUFFT_GPU_EXTERNAL_LIBS hip::hipfft hip::hipcub)
+  list(APPEND NEONUFFT_GPU_EXTERNAL_LIBS_PUBLIC hip::host)
 endif()
 
 # generate config.h
