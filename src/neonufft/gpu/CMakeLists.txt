@@ -1,7 +1,9 @@
-set(NEONUFFT_SOURCE_FILES
+set(NEONUFFT_GPU_SOURCE_FILES
 	plan.cpp
 	device_allocator.cpp
 	util/fft_grid.cpp
+	)
+set(NEONUFFT_GPU_KERNEL_FILES
 	kernels/upsample_kernel.cu
 	kernels/interpolation_kernel.cu
 	kernels/rescale_loc_kernel.cu
@@ -13,8 +15,11 @@ set(NEONUFFT_SOURCE_FILES
 	kernels/fseries_kernel.cu
 	)
 
+if(NEONUFFT_ROCM)
+	set_source_files_properties(${NEONUFFT_GPU_KERNEL_FILES} PROPERTIES LANGUAGE HIP)
+endif()
 
-add_library(neonufft_gpu_objects OBJECT ${NEONUFFT_SOURCE_FILES})
+add_library(neonufft_gpu_objects OBJECT ${NEONUFFT_GPU_SOURCE_FILES} ${NEONUFFT_GPU_KERNEL_FILES})
 
 # make static libraries linkable into shared ones
 set_property(TARGET neonufft_gpu_objects PROPERTY POSITION_INDEPENDENT_CODE ON)

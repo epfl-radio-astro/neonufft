@@ -16,6 +16,11 @@
 #include "neonufft/types.hpp"
 #include "neonufft/util/func_attributes.hpp"
 
+// load runtime header for __ldg function declaration with HIP
+#if defined(__CUDACC__) || defined(__HIPCC__)
+#include "neonufft/gpu/util//runtime.hpp"
+#endif
+
 /*
  *
  *  Views are non-owning objects allowing access to memory through multi-dimensional indexing.
