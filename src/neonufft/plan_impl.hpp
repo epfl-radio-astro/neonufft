@@ -40,8 +40,39 @@ public:
     kernel_param_ =
         KernelParameters<T>(opt_.tol, opt.upsampfac, opt.kernel_approximation);
 
-    this->set_modes(modes);
-    this->set_nu_points(num_nu, loc);
+    // required fft grid size
+    std::array<IntType, DIM> fft_grid_size;
+    for (std::size_t d = 0; d < DIM; ++d) {
+      fft_grid_size[d] = std::max<std::size_t>(2 * kernel_param_.n_spread,
+                                               modes[d] * opt_.upsampfac);
+    }
+
+    // create new grid if different
+    bool new_grid = false;
+    for (std::size_t d = 0; d < DIM; ++d) {
+      new_grid |= (fft_grid_size[d] != fft_grid_.shape(d));
+    }
+    if (new_grid) {
+      const auto padding = spread_padding(kernel_param_.n_spread);
+      typename decltype(fft_grid_)::IndexType pad;
+      pad.fill(padding);
+      fft_grid_ = FFTGrid<T, DIM>(opt_.num_threads, fft_grid_size, sign_, pad);
+
+      // recompute correction factor for kernel windowing
+      // we compute the inverse to use multiplication during execution
+
+      for (std::size_t d = 0; d < DIM; ++d) {
+        auto correction_fact_size = fft_grid_size[d] / 2 + 1;
+        correction_factors_[d].reset(correction_fact_size);
+
+        contrib::onedim_fseries_kernel_inverse(
+            fft_grid_size[d], correction_factors_[d].data(),
+            kernel_param_.n_spread, kernel_param_.es_halfwidth,
+            kernel_param_.es_beta, kernel_param_.es_c);
+      }
+    }
+
+    this->set_points(num_nu, loc);
   }
 
   void transform_type_1(const std::complex<T> *in, std::complex<T> *out,
@@ -119,43 +150,7 @@ public:
     }
   }
 
-  void set_modes(std::array<IntType, DIM> modes) {
-    // required fft grid size
-    std::array<IntType, DIM> fft_grid_size;
-    for (std::size_t d = 0; d < DIM; ++d) {
-      fft_grid_size[d] = std::max<std::size_t>(2 * kernel_param_.n_spread,
-                                               modes[d] * opt_.upsampfac);
-    }
-
-    // create new grid if different
-    bool new_grid = false;
-    for (std::size_t d = 0; d < DIM; ++d) {
-      new_grid |= (fft_grid_size[d] != fft_grid_.shape(d));
-    }
-    if (new_grid) {
-      const auto padding = spread_padding(kernel_param_.n_spread);
-      typename decltype(fft_grid_)::IndexType pad;
-      pad.fill(padding);
-      fft_grid_ = FFTGrid<T, DIM>(opt_.num_threads, fft_grid_size, sign_, pad);
-
-      // recompute correction factor for kernel windowing
-      // we compute the inverse to use multiplication during execution
-
-      for (std::size_t d = 0; d < DIM; ++d) {
-        auto correction_fact_size = fft_grid_size[d] / 2 + 1;
-        correction_factors_[d].reset(correction_fact_size);
-
-        contrib::onedim_fseries_kernel_inverse(
-            fft_grid_size[d], correction_factors_[d].data(),
-            kernel_param_.n_spread, kernel_param_.es_halfwidth,
-            kernel_param_.es_beta, kernel_param_.es_c);
-      }
-    }
-
-    modes_ = modes;
-  }
-
-  void set_nu_points(IntType num_nu, std::array<const T *, DIM> loc) {
+  void set_points(IntType num_nu, std::array<const T*, DIM> loc) {
     if (nu_loc_.shape(0) != num_nu) {
       nu_loc_ = HostArray<Point<T, DIM>, 1>(num_nu);
     }

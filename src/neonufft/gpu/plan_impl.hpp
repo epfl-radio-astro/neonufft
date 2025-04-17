@@ -57,9 +57,40 @@ public:
     api::get_device(&device_id);
     api::get_device_properties(&device_prop_, device_id);
 
+    // required fft grid size
+    std::array<IntType, DIM> fft_grid_size;
+    for (std::size_t d = 0; d < DIM; ++d) {
+      fft_grid_size[d] =
+          std::max<std::size_t>(2 * kernel_param_.n_spread, modes[d] * opt_.upsampfac);
+    }
 
-    this->set_modes(modes);
-    this->set_nu_points(num_nu, loc);
+    // create new grid if different
+    bool new_grid = false;
+    for (std::size_t d = 0; d < DIM; ++d) {
+      new_grid |= (fft_grid_size[d] != fft_grid_.shape(d));
+    }
+    if (new_grid) {
+      fft_grid_ = FFTGrid<T, DIM>(device_alloc_, stream_, fft_grid_size, sign_);
+
+      // recompute correction factor for kernel windowing
+      // we compute the inverse to use multiplication during execution
+      for (std::size_t d = 0; d < DIM; ++d) {
+        auto correction_fact_size = fft_grid_size[d] / 2 + 1;
+        correction_factors_[d].reset(correction_fact_size, device_alloc_);
+        gpu::fseries_inverse<T>(device_prop_, stream_, kernel_param_, fft_grid_.shape(d),
+                                correction_factors_[d]);
+      }
+
+      //TODO: remove?
+      typename decltype(partition_)::IndexType part_grid_size;
+      for (std::size_t d = 0; d < DIM; ++d) {
+        part_grid_size[d] = (fft_grid_.view().shape(d) + gpu::PartitionGroup::width - 1) /
+                            PartitionGroup::width;
+      }
+      partition_.reset(part_grid_size, device_alloc_);
+    }
+
+    this->set_points(num_nu, loc);
   }
 
   void transform_type_1(const ComplexType<T>* in, ComplexType<T>* out,
@@ -168,44 +199,7 @@ public:
                                DeviceView<ComplexType<T>, 1>(out, nu_loc_.size(), 1));
   }
 
-  void set_modes(std::array<IntType, DIM> modes) {
-    // required fft grid size
-    std::array<IntType, DIM> fft_grid_size;
-    for (std::size_t d = 0; d < DIM; ++d) {
-      fft_grid_size[d] =
-          std::max<std::size_t>(2 * kernel_param_.n_spread, modes[d] * opt_.upsampfac);
-    }
-
-    // create new grid if different
-    bool new_grid = false;
-    for (std::size_t d = 0; d < DIM; ++d) {
-      new_grid |= (fft_grid_size[d] != fft_grid_.shape(d));
-    }
-    if (new_grid) {
-      fft_grid_ = FFTGrid<T, DIM>(device_alloc_, stream_, fft_grid_size, sign_);
-
-      // recompute correction factor for kernel windowing
-      // we compute the inverse to use multiplication during execution
-      for (std::size_t d = 0; d < DIM; ++d) {
-        auto correction_fact_size = fft_grid_size[d] / 2 + 1;
-        correction_factors_[d].reset(correction_fact_size, device_alloc_);
-        gpu::fseries_inverse<T>(device_prop_, stream_, kernel_param_, fft_grid_.shape(d),
-                                correction_factors_[d]);
-      }
-
-      //TODO: remove?
-      typename decltype(partition_)::IndexType part_grid_size;
-      for (std::size_t d = 0; d < DIM; ++d) {
-        part_grid_size[d] = (fft_grid_.view().shape(d) + gpu::PartitionGroup::width - 1) /
-                            PartitionGroup::width;
-      }
-      partition_.reset(part_grid_size, device_alloc_);
-    }
-
-    modes_ = modes;
-  }
-
-  void set_nu_points(IntType num_nu, std::array<const T*, DIM> loc) {
+  void set_points(IntType num_nu, std::array<const T*, DIM> loc) {
     StackArray<ConstDeviceView<T, 1>, DIM> loc_views;
     for (IntType dim = 0; dim < DIM; ++dim) {
       loc_views[dim] = ConstDeviceView<T, 1>(loc[dim], num_nu, 1);

@@ -3,6 +3,7 @@
 #include "neonufft/config.h"
 
 #if defined(__CUDACC__) || defined(__HIPCC__)
+#include "neonufft/gpu/util/runtime.hpp"
 #define NEONUFFT_H_FUNC __host__
 #define NEONUFFT_H_D_FUNC __host__ __device__
 #define NEONUFFT_D_FUNC __device__

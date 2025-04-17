@@ -38,15 +38,10 @@ void Plan<T, DIM>::transform_type_2(const ComplexType<T> *in,
 }
 
 template <typename T, std::size_t DIM>
-void Plan<T, DIM>::set_modes(std::array<IntType, DIM> modes) {
-  reinterpret_cast<gpu::PlanImpl<T, DIM> *>(impl_.get())->set_modes(modes);
-}
-
-template <typename T, std::size_t DIM>
-void Plan<T, DIM>::set_nu_points(IntType num_nu,
+void Plan<T, DIM>::set_points(IntType num_nu,
                                        std::array<const T *, DIM> loc) {
   reinterpret_cast<gpu::PlanImpl<T, DIM> *>(impl_.get())
-      ->set_nu_points(num_nu, loc);
+      ->set_points(num_nu, loc);
 }
 
 template class Plan<float, 1>;

@@ -38,9 +38,7 @@ public:
                         std::array<IntType, DIM> in_strides,
                         ComplexType<T> *out);
 
-  void set_modes(std::array<IntType, DIM> modes);
-
-  void set_nu_points(IntType num_nu, std::array<const T *, DIM> loc);
+  void set_points(IntType num_nu, std::array<const T*, DIM> loc);
 
 private:
   std::unique_ptr<void, void (*)(void *)> impl_;
