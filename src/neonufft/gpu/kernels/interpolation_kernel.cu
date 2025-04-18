@@ -233,47 +233,31 @@ __global__ static void __launch_bounds__(BLOCK_SIZE)
     const auto point = points[idx];
     const T loc_x = point.coord[0] * grid.shape(0);  // px in [0, 1]
     const T idx_init_ceil_x = ceil(loc_x - half_width);
-    IntType idx_init_x = IntType(idx_init_ceil_x);  // fine padded_grid start index (-
-    T p_x = idx_init_ceil_x - loc_x;                // x1 in [-w/2,-w/2+1], up to rounding
-
     const T loc_y = point.coord[1] * grid.shape(1);  // px in [0, 1]
     const T idx_init_ceil_y = ceil(loc_y - half_width);
-    IntType idx_init_y = IntType(idx_init_ceil_y);   // fine padded_grid start index (-
-    T p_y = idx_init_ceil_y - loc_y;                 // x1 in [-w/2,-w/2+1], up to rounding
-                                                     //
     const T loc_z = point.coord[2] * grid.shape(2);  // px in [0, 1]
     const T idx_init_ceil_z = ceil(loc_z - half_width);
+
+    IntType idx_init_x = IntType(idx_init_ceil_x);  // fine padded_grid start index (-
+    T p_x = idx_init_ceil_x - loc_x;                // x1 in [-w/2,-w/2+1], up to rounding
+                                                    //
+    IntType idx_init_y = IntType(idx_init_ceil_y);  // fine padded_grid start index (-
+    T p_y = idx_init_ceil_y - loc_y;                // x1 in [-w/2,-w/2+1], up to rounding
+                                                    //
     IntType idx_init_z = IntType(idx_init_ceil_z);  // fine padded_grid start index (-
     T p_z = idx_init_ceil_z - loc_z;                // x1 in [-w/2,-w/2+1], up to rounding
 
     // precompute kernel values. [0, N_SPREAD) threads compute along x and [N_SPREAD, 2*N_SPREAD)
     // along y axis
-    if constexpr (WARP_SIZE <= 3 * N_SPREAD) {
-      if (warp_thread_id < 3 * N_SPREAD) {
-        // select input for thread partitioned into [0, N_SPREAD), [N_SPREAD, 2*N_SPREAD) and
-        // [N_SPREAD, 3*N_SPREAD)
-        T ker_input = warp_thread_id < N_SPREAD
-                          ? p_x + warp_thread_id
-                          : (warp_thread_id < 2 * N_SPREAD ? p_y + (warp_thread_id - N_SPREAD)
-                                                           : p_z + (warp_thread_id - 2 * N_SPREAD));
+    if (warp_thread_id < 2 * N_SPREAD) {
+      T ker_input =
+          warp_thread_id < N_SPREAD ? p_x + warp_thread_id : p_y + (warp_thread_id - N_SPREAD);
 
-        // expensive kernel evaluation
-        ker[warp_thread_id] = kernel.eval_scalar(ker_input);
-      }
-    } else {
-      if (warp_thread_id < 2 * N_SPREAD) {
-        T ker_input =
-            warp_thread_id < N_SPREAD ? p_x + warp_thread_id : p_y + (warp_thread_id - N_SPREAD);
-
-        // expensive kernel evaluation
-        ker[warp_thread_id] = kernel.eval_scalar(ker_input);
-      }
-      if (warp_thread_id < N_SPREAD) {
-        T ker_input = p_z + warp_thread_id;
-
-        // expensive kernel evaluation
-        ker[warp_thread_id + 2 * N_SPREAD] = kernel.eval_scalar(ker_input);
-      }
+      // expensive kernel evaluation
+      ker[warp_thread_id] = kernel.eval_scalar(ker_input);
+    }
+    if (warp_thread_id <  N_SPREAD) {
+      ker[2 * N_SPREAD + warp_thread_id] = kernel.eval_scalar(p_z + warp_thread_id);
     }
     // sync not available / required on AMD
 #if defined(__CUDACC__)
@@ -288,45 +272,27 @@ __global__ static void __launch_bounds__(BLOCK_SIZE)
       else if (grid_idx_x >= grid.shape(0))
         grid_idx_x -= grid.shape(0);
 
-      if (idx_init_z < 0 || idx_init_z + N_SPREAD >= grid.shape(2) || idx_init_y < 0 ||
-          idx_init_y + N_SPREAD >= grid.shape(1)) {
-        for (int idx_ker_z = 0; idx_ker_z < N_SPREAD; ++idx_ker_z) {
-          const T ker_value_xz = ker_value_x * ker_z[idx_ker_z];
-          auto grid_idx_z = idx_init_z + idx_ker_z;
-          if (grid_idx_z < 0)
-            grid_idx_z += grid.shape(2);
-          else if (grid_idx_z >= grid.shape(2))
-            grid_idx_z -= grid.shape(2);
+      for (int idx_ker_z = 0; idx_ker_z < N_SPREAD; ++idx_ker_z) {
+        auto grid_idx_z = idx_init_z + idx_ker_z;
+        if (grid_idx_z < 0)
+          grid_idx_z += grid.shape(2);
+        else if (grid_idx_z >= grid.shape(2))
+          grid_idx_z -= grid.shape(2);
 
-          for (int idx_ker_y = col_init; idx_ker_y < N_SPREAD; idx_ker_y += ker_step_size_y) {
-            auto grid_idx_y = idx_init_y + idx_ker_y;
-            if (grid_idx_y < 0)
-              grid_idx_y += grid.shape(1);
-            else if (grid_idx_y >= grid.shape(1))
-              grid_idx_y -= grid.shape(1);
+        const T ker_val_xz = ker_z[idx_ker_z] * ker_value_x;
 
-            const auto grid_value = grid[{grid_idx_x, grid_idx_y, grid_idx_z}];
+        for (int idx_ker_y = col_init; idx_ker_y < N_SPREAD; idx_ker_y += ker_step_size_y) {
+          auto grid_idx_y = idx_init_y + idx_ker_y;
+          if (grid_idx_y < 0)
+            grid_idx_y += grid.shape(1);
+          else if (grid_idx_y >= grid.shape(1))
+            grid_idx_y -= grid.shape(1);
 
-            const T ker_value = ker_value_xz * ker_y[idx_ker_y];
-            sum.x += ker_value * grid_value.x;
-            sum.y += ker_value * grid_value.y;
-          }
-        }
-      } else {
-        // TODO: fix false warning for unused variable
-        for (int idx_ker_z = 0; idx_ker_z < N_SPREAD; ++idx_ker_z) {
-          const T ker_value_xz = ker_value_x * ker_z[idx_ker_z];
-          auto grid_idx_z = idx_init_z + idx_ker_z;
+          const auto grid_value = grid[{grid_idx_x, grid_idx_y, grid_idx_z}];
 
-          for (int idx_ker_y = col_init; idx_ker_y < N_SPREAD; idx_ker_y += ker_step_size_y) {
-            auto grid_idx_y = idx_init_y + idx_ker_y;
-
-            const auto grid_value = grid[{grid_idx_x, grid_idx_y, grid_idx_z}];
-
-            const T ker_value = ker_value_xz * ker_y[idx_ker_y];
-            sum.x += ker_value * grid_value.x;
-            sum.y += ker_value * grid_value.y;
-          }
+          const T ker_value = ker_val_xz * ker_y[idx_ker_y];
+          sum.x += ker_value * grid_value.x;
+          sum.y += ker_value * grid_value.y;
         }
       }
     }

@@ -27,7 +27,7 @@ FFTGrid<T, DIM>::FFTGrid(const std::shared_ptr<Allocator>& alloc, StreamType str
 
   // create plan
   // fftw is row-major. Stored grid is coloumn-major.
-  fft::create(&new_plan);
+  gpu::fft::create(&new_plan);
   gpu::fft::set_auto_allocation(new_plan, 0);
   if constexpr (DIM == 1) {
     gpu::fft::make_plan_1d(new_plan, grid_.shape(0),
