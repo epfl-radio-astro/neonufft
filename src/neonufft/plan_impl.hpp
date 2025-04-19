@@ -66,11 +66,6 @@ public:
         auto correction_fact_size = fft_grid_size[d] / 2 + 1;
         correction_factors_[d].reset(correction_fact_size);
 
-        // contrib::onedim_fseries_kernel_inverse(
-        //     fft_grid_size[d], correction_factors_[d].data(),
-        //     kernel_param_.n_spread, kernel_param_.es_halfwidth,
-        //     kernel_param_.es_beta, kernel_param_.es_c);
-
         fseries_inverse<T>(opt_.kernel_type, kernel_param_, fft_grid_size[d],
                            correction_factors_[d].data());
       }

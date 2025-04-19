@@ -10,11 +10,12 @@
 #include "contrib/legendre_rule/legendre_rule_fast.hpp"
 #include "neonufft/es_kernel_param.hpp"
 #include "neonufft/enums.h"
+#include "neonufft/kernels/fseries_kernel.hpp"
 #include "neonufft/types.hpp"
 
 // Generates code for every target that this compiler can support.
 #undef HWY_TARGET_INCLUDE
-#define HWY_TARGET_INCLUDE "neonufft/kernels/fseries_inverse_kernel.cpp" // this file
+#define HWY_TARGET_INCLUDE "neonufft/kernels/fseries_kernel.cpp" // this file
 
 #include "neonufft/kernels/hwy_dispatch.hpp"
 
@@ -37,10 +38,12 @@ HWY_ATTR void fseries_inverse_kernel(const KER& kernel, IntType grid_size, T* HW
   const TagType<T> d;
   constexpr IntType n_lanes = hn::Lanes(d);
 
+  const IntType n_out = grid_size / 2 + 1;
+
   std::array<double, 2 * N_QUAD> nodes_dp;
   std::array<double, 2 * N_QUAD> weights;
-  HWY_ALIGN std::array<T, N_QUAD + (N_QUAD % n_lanes)> kernel_values = {0};
-  HWY_ALIGN std::array<T, N_QUAD + (N_QUAD % n_lanes)> phases = {0};
+  HWY_ALIGN std::array<T, N_QUAD + n_lanes - (N_QUAD % n_lanes)> kernel_values = {0};
+  HWY_ALIGN std::array<T, N_QUAD + n_lanes - (N_QUAD % n_lanes)> phases = {0};
 
   // kernel is symmetric. Use only nodes in [0, 1]
   // Always in double precision
@@ -55,7 +58,6 @@ HWY_ATTR void fseries_inverse_kernel(const KER& kernel, IntType grid_size, T* HW
   }
 
 
-  const IntType n_out = grid_size / 2 + 1;
 
   for (IntType idx_out = 0; idx_out < n_out; ++idx_out) {
     const T sign = (idx_out % 2) ? T(-1) : T(1);
@@ -105,7 +107,6 @@ HWY_ATTR void fseries_inverse_kernel(const KER& kernel, IntType grid_size, T* HW
     fs[j] = T(1) / x; // NOTE: modified to compute inverse
   }
   */
-
 }
 
 template <typename T, IntType N_SPREAD>

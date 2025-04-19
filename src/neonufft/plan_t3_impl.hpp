@@ -16,6 +16,7 @@
 #include "neonufft/kernels/compute_postphase_kernel.hpp"
 #include "neonufft/kernels/compute_prephase_kernel.hpp"
 #include "neonufft/kernels/fold_padding.hpp"
+#include "neonufft/kernels/fseries_kernel.hpp"
 #include "neonufft/kernels/interpolation_kernel.hpp"
 #include "neonufft/kernels/min_max_kernel.hpp"
 #include "neonufft/kernels/nuft_real_kernel.hpp"
@@ -380,10 +381,8 @@ private:
         correction_factors_[d].reset(correction_fact_size);
       }
 
-      contrib::onedim_fseries_kernel_inverse(
-          fft_grid_.shape(d), correction_factors_[d].data(),
-          kernel_param_.n_spread, kernel_param_.es_halfwidth,
-          kernel_param_.es_beta, kernel_param_.es_c);
+      fseries_inverse<T>(opt_.kernel_type, kernel_param_, fft_grid_.shape(d),
+                         correction_factors_[d].data());
     }
   }
 
