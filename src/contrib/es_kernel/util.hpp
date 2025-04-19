@@ -147,7 +147,8 @@ inline void onedim_fseries_kernel_inverse(IntType nf, T *fwkerhalf,
 {
   T J2 = nspread / 2.0; // J/2, half-width of ker z-support
   // # quadr nodes in z (from 0 to J/2; reflections will be added)...
-  int q = (int)(2 + 3.0 * J2); // not sure why so large? cannot exceed MAX_NQUAD
+  // int q = (int)(2 + 3.0 * J2); // not sure why so large? cannot exceed MAX_NQUAD
+  int q = nspread + (nspread % 2);
   std::vector<T> f(q);
   std::vector<double> z(2 * q);
   std::vector<double> w(2 * q);

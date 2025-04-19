@@ -10,6 +10,7 @@ set(NEONUFFT_SOURCE_FILES
 	kernels/compute_prephase_kernel.cpp
 	kernels/fold_padding.cpp
 	kernels/nuft_real_kernel.cpp
+	kernels/fseries_kernel.cpp
 	threading/thread_pool.cpp
 	memory/array.cpp
 	util/fft_grid.cpp

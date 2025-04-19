@@ -21,11 +21,6 @@
 #include "neonufft/gpu/memory/device_array.hpp"
 #include "neonufft/gpu/plan.hpp"
 #include "neonufft/gpu/util/runtime_api.hpp"
-#include "neonufft/kernels/interpolation_kernel.hpp"
-#include "neonufft/kernels/rescale_loc_kernel.hpp"
-#include "neonufft/kernels/upsample_kernel.hpp"
-#include "neonufft/kernels/downsample_kernel.hpp"
-#include "neonufft/kernels/spreading_kernel.hpp"
 #include "neonufft/gpu/kernels/spreading_kernel.hpp"
 #include "neonufft/memory/array.hpp"
 #include "neonufft/memory/view.hpp"
@@ -103,23 +98,6 @@ public:
     gpu::spread<T, DIM>(device_prop_, stream_, kernel_param_, partition_, nu_loc_, in_view,
                         ConstDeviceView<ComplexType<T>, 1>(), fft_grid_.view());
 
-    // if constexpr(DIM==3)
-    // {
-    //   HostArray<ComplexType<T>, DIM> tmp(fft_grid_.view().shape());
-    //   memcopy(fft_grid_.view(), tmp, stream_);
-    //   api::device_synchronize();
-    //   for (IntType k = 0; k < tmp.shape(2); ++k) {
-    //     for (IntType j = 0; j < tmp.shape(1); ++j) {
-    //       for (IntType i = 0; i < tmp.shape(0); ++i) {
-    //         printf("(%f, %f), ", tmp[{i, j,k}].x, tmp[{i, j,k}].y);
-    //       }
-    //       printf("\n");
-    //     }
-    //     printf("--\n");
-    //   }
-    //   printf("-------\n");
-    // }
-
     fft_grid_.transform();
 
     std::array<ConstDeviceView<T, 1>, DIM> correction_factor_views;
@@ -132,12 +110,6 @@ public:
     gpu::downsample<T, DIM>(device_prop_, stream_, opt_.order, fft_grid_.view(),
                             correction_factor_views, out_view);
 
-    // {
-    //   HostArray<ComplexType<T>, DIM> tmp(out_view.shape());
-    //   memcopy(out_view, tmp, stream_);
-    //   api::device_synchronize();
-    //   api::device_synchronize();
-    // }
   }
 
   void transform_type_2(const ComplexType<T>* in, std::array<IntType, DIM> in_strides,
@@ -154,45 +126,9 @@ public:
     gpu::upsample<T, DIM>(device_prop_, stream_, opt_.order, in_view, correction_factor_views,
                           fft_grid_.view());
 
-
-
-    //---
     HostArray<std::complex<T>, DIM> fft_grid_host(fft_grid_.shape());
-    //---
-
-    // HostArray<std::complex<T>, DIM> in_host(in_view.shape());
-    // memcopy(in_view, in_host, stream_);
-    // std::array<HostArray<T, 1>, DIM> correction_factors_host;
-    // std::array<ConstHostView<T, 1>, DIM> correction_factor_views_host;
-    // for (std::size_t d = 0; d < DIM; ++d) {
-    //   correction_factors_host[d].reset(correction_factors_[d].shape());
-    //   correction_factor_views_host[d] = correction_factors_host[d];
-    //   memcopy(correction_factors_[d], correction_factors_host[d], stream_);
-    // }
-    // api::stream_synchronize(stream_);
-
-    // ::neonufft::upsample<T, DIM>(opt_.order, in_host, correction_factor_views_host, fft_grid_host);
-    // memcopy(fft_grid_host, fft_grid_.view(), stream_);
-
-    //---
-
 
     fft_grid_.transform();
-
-    //---
-    // memcopy(fft_grid_.view(), fft_grid_host, stream_);
-    // HostArray<Point<T, DIM>, 1> nu_loc_host(nu_loc_.shape());
-    // memcopy(nu_loc_, nu_loc_host, stream_);
-    // api::stream_synchronize(stream_);
-
-    // HostArray<std::complex<T>, 1> out_host(nu_loc_.shape());
-
-    // ::neonufft::interpolate<T, DIM>(opt_.kernel_type, kernel_param_, fft_grid_host,
-    //                                 nu_loc_host.shape(0), nu_loc_host.data(), out_host.data());
-
-    // memcopy(out_host, DeviceView<ComplexType<T>, 1>(out, nu_loc_.size(), 1), stream_);
-    // api::stream_synchronize(stream_);
-    //---
 
     gpu::interpolation<T, DIM>(device_prop_, stream_, kernel_param_, nu_loc_, fft_grid_.view(),
                                DeviceView<ComplexType<T>, 1>(),

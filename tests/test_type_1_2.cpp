@@ -36,20 +36,18 @@ using namespace neonufft;
 namespace {
 
 struct PlanTestParam {
-  using TupleType = std::tuple<IntType, IntType, IntType, IntType, double, double, int, bool, int>;
+  using TupleType = std::tuple<IntType, std::array<IntType, 3>, double, double, int, bool, int>;
   PlanTestParam(const TupleType& t)
       : num_nu(std::get<0>(t)),
-        modes({std::get<1>(t), std::get<2>(t), std::get<3>(t)}),
-        upsampfac(std::get<4>(t)),
-        tol(std::get<5>(t)),
-        sign(std::get<6>(t)),
-        use_gpu(std::get<7>(t)),
-        type(std::get<8>(t)),
+        modes(std::get<1>(t)),
+        upsampfac(std::get<2>(t)),
+        tol(std::get<3>(t)),
+        sign(std::get<4>(t)),
+        use_gpu(std::get<5>(t)),
+        type(std::get<6>(t)),
         dim(1) {
-    if (modes[2] > 1)
-      dim = 3;
-    else if (modes[1] > 1)
-      dim = 2;
+    if (modes[1]) dim = 2;
+    if (modes[2]) dim = 3;
   }
 
   std::array<IntType, 3> modes;
@@ -296,12 +294,41 @@ static auto param_type_names(const ::testing::TestParamInfo<PlanTestParam::Tuple
   stream << "_modes_" << param.modes[0];
   stream << "_" << param.modes[1];
   stream << "_" << param.modes[2];
-  stream << "_up_" << param.upsampfac;
+  const int upsampfacInt = param.upsampfac;
+  const int upsampfacFrac = int(param.upsampfac * 100) % 100;
+  stream << "_up_" << upsampfacInt << "_" << upsampfacFrac;
   stream << "_tol_" << int(-std::log10(param.tol));
   stream << "_sign_" << (param.sign < 0 ? "minus" : "plus");
 
   return stream.str();
 }
+
+static auto generate_modes(std::vector<IntType> sizes) -> std::vector<std::array<IntType, 3>> {
+  std::vector<std::array<IntType, 3>> modes;
+
+  // 1D
+  for (const auto& s1 : sizes) {
+    modes.emplace_back(std::array<IntType, 3>{s1, 0, 0});
+  }
+
+  // 2D
+  for (const auto& s1 : sizes) {
+    for (const auto& s2 : sizes) {
+      modes.emplace_back(std::array<IntType, 3>{s1, s2, 0});
+    }
+  }
+
+  // 3D
+  for (const auto& s1 : sizes) {
+    for (const auto& s2 : sizes) {
+      for (const auto& s3 : sizes) {
+        modes.emplace_back(std::array<IntType, 3>{s1, s2, s3});
+      }
+    }
+  }
+
+  return modes;
+};
 
 #if defined(NEONUFFT_CUDA) || defined(NEONUFFT_ROCM)
 #define NEONUFFT_PU_VALUES false, true
@@ -310,29 +337,56 @@ static auto param_type_names(const ::testing::TestParamInfo<PlanTestParam::Tuple
 #endif
 
 INSTANTIATE_TEST_SUITE_P(
-    Plan, PlanTestFloat,
-    ::testing::Combine(::testing::Values<IntType>(1, 10, 200,
-                                                  503),              // number of in points
-                       ::testing::Values<IntType>(1, 10, 200, 203),  // mode x
-                       ::testing::Values<IntType>(1, 10),            // mode y
-                       ::testing::Values<IntType>(1, 10),            // mode z
+    Modes, PlanTestFloat,
+    ::testing::Combine(::testing::Values<IntType>(100),                       // number of in points
+                       ::testing::ValuesIn(generate_modes({1, 2, 23, 256})),  // modes
+                       ::testing::Values<double>(2.0),                        // upsampling factor
+                       ::testing::Values<double>(1e-5),                       // tolerance
+                       ::testing::Values<int>(-1),                            // sign
+                       ::testing::Values<bool>(NEONUFFT_PU_VALUES),           // cpu, gpu
+                       ::testing::Values<int>(1, 2)),  // transform type 1 or 2
+    param_type_names);
+
+INSTANTIATE_TEST_SUITE_P(
+    Sign, PlanTestFloat,
+    ::testing::Combine(::testing::Values<IntType>(10),               // number of in points
+                       ::testing::ValuesIn(generate_modes({16})),    // modes
                        ::testing::Values<double>(2.0),               // upsampling factor
-                       ::testing::Values<double>(1e-2, 1e-5),        // tolerance
+                       ::testing::Values<double>(1e-5),              // tolerance
                        ::testing::Values<int>(1, -1),                // sign
                        ::testing::Values<bool>(NEONUFFT_PU_VALUES),  // cpu, gpu
                        ::testing::Values<int>(1, 2)),                // transform type 1 or 2
     param_type_names);
 
-// INSTANTIATE_TEST_SUITE_P(
-//     Plan, PlanTestDouble,
-//     ::testing::Combine(::testing::Values<IntType>(1, 10, 200,
-//                                                   503),              // number of in points
-//                        ::testing::Values<IntType>(1, 10, 100, 203),  // mode x
-//                        ::testing::Values<IntType>(1, 49),            // mode y
-//                        ::testing::Values<IntType>(1, 30),            // mode z
-//                        ::testing::Values<double>(2.0),               // upsampling factor
-//                        ::testing::Values<double>(1e-4, 1e-7),        // tolerance
-//                        ::testing::Values<int>(1, -1),                // sign
-//                        ::testing::Values<bool>(NEONUFFT_PU_VALUES),  // cpu, gpu
-//                        ::testing::Values<int>(1, 2)),                // transform type 1 or 2
-//     param_type_names);
+INSTANTIATE_TEST_SUITE_P(
+    Up, PlanTestFloat,
+    ::testing::Combine(::testing::Values<IntType>(10),               // number of in points
+                       ::testing::ValuesIn(generate_modes({16})),    // modes
+                       ::testing::Values<double>(1.25, 1.6, 2.0),    // upsampling factor
+                       ::testing::Values<double>(1e-5),              // tolerance
+                       ::testing::Values<int>(-1),                   // sign
+                       ::testing::Values<bool>(NEONUFFT_PU_VALUES),  // cpu, gpu
+                       ::testing::Values<int>(1, 2)),                // transform type 1 or 2
+    param_type_names);
+
+INSTANTIATE_TEST_SUITE_P(
+    Up, PlanTestDouble,
+    ::testing::Combine(::testing::Values<IntType>(10),               // number of in points
+                       ::testing::ValuesIn(generate_modes({32})),    // modes
+                       ::testing::Values<double>(1.25, 1.6, 2.0),    // upsampling factor
+                       ::testing::Values<double>(1e-5),              // tolerance
+                       ::testing::Values<int>(-1),                   // sign
+                       ::testing::Values<bool>(NEONUFFT_PU_VALUES),  // cpu, gpu
+                       ::testing::Values<int>(1, 2)),                // transform type 1 or 2
+    param_type_names);
+
+INSTANTIATE_TEST_SUITE_P(
+    Tol, PlanTestDouble,
+    ::testing::Combine(::testing::Values<IntType>(20),               // number of in points
+                       ::testing::ValuesIn(generate_modes({40})),     // modes
+                       ::testing::Values<double>(2.0),                // upsampling factor
+                       ::testing::Values<double>(1e-3, 1e-8, 1e-14),  // tolerance
+                       ::testing::Values<int>(-1),                    // sign
+                       ::testing::Values<bool>(NEONUFFT_PU_VALUES),   // cpu, gpu
+                       ::testing::Values<int>(1, 2)),                 // transform type 1 or 2
+    param_type_names);

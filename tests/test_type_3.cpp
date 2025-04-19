@@ -40,7 +40,9 @@ struct Type3TestParam {
        upsampfac(std::get<3>(t)),
        tol(std::get<4>(t)),
        sign(std::get<5>(t)),
-       use_gpu(std::get<6>(t)) {}
+       use_gpu(std::get<6>(t)) {
+
+       }
 
  IntType dim;
  IntType num_in;

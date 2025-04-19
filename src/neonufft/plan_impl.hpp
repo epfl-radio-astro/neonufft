@@ -10,6 +10,7 @@
 #include "neonufft/kernels/rescale_loc_kernel.hpp"
 #include "neonufft/kernels/spreading_kernel.hpp"
 #include "neonufft/kernels/upsample_kernel.hpp"
+#include "neonufft/kernels/fseries_kernel.hpp"
 #include "neonufft/memory/array.hpp"
 #include "neonufft/memory/view.hpp"
 #include "neonufft/exceptions.hpp"
@@ -65,10 +66,13 @@ public:
         auto correction_fact_size = fft_grid_size[d] / 2 + 1;
         correction_factors_[d].reset(correction_fact_size);
 
-        contrib::onedim_fseries_kernel_inverse(
-            fft_grid_size[d], correction_factors_[d].data(),
-            kernel_param_.n_spread, kernel_param_.es_halfwidth,
-            kernel_param_.es_beta, kernel_param_.es_c);
+        // contrib::onedim_fseries_kernel_inverse(
+        //     fft_grid_size[d], correction_factors_[d].data(),
+        //     kernel_param_.n_spread, kernel_param_.es_halfwidth,
+        //     kernel_param_.es_beta, kernel_param_.es_c);
+
+        fseries_inverse<T>(opt_.kernel_type, kernel_param_, fft_grid_size[d],
+                           correction_factors_[d].data());
       }
     }
 
@@ -88,30 +92,6 @@ public:
 
     spread<T, DIM>(opt_.kernel_type, kernel_param_, nu_loc_.shape(0), nu_loc_.data(), in, nullptr,
                    fft_grid_.shape().to_array(), fft_grid_.padded_view());
-    // if constexpr (DIM == 2) {
-    //   for (IntType j = 0; j < fft_grid_.padded_view().shape(1); ++j) {
-    //     for (IntType i = 0; i < fft_grid_.padded_view().shape(0); ++i) {
-    //       printf("(%f, %f), ", fft_grid_.padded_view()[{i, j}].real(),
-    //              fft_grid_.padded_view()[{i, j}].imag());
-    //     }
-    //     printf("\n");
-    //   }
-    //   printf("-------\n");
-    // }
-
-
-    // if constexpr (DIM == 3) {
-    //   for (IntType k = 0; k < fft_grid_.view().shape(2); ++k) {
-    //     for (IntType j = 0; j < fft_grid_.view().shape(1); ++j) {
-    //       for (IntType i = 0; i < fft_grid_.view().shape(0); ++i) {
-    //         printf("(%f, %f), ", fft_grid_.view()[{i, j, k}].real(), fft_grid_.view()[{i, j, k}].imag());
-    //       }
-    //       printf("\n");
-    //     }
-    //     printf("--\n");
-    //   }
-    //   printf("-------\n");
-    // }
 
     fold_padding<T, DIM>(kernel_param_.n_spread, fft_grid_.padded_view());
 
