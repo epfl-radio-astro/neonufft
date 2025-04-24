@@ -61,12 +61,11 @@ std::uint64_t PlanT3<T, DIM>::grid_memory_size(const Options &opt,
 
 template <typename T, std::size_t DIM>
 PlanT3<T, DIM>::PlanT3(Options opt, int sign, IntType num_in,
-                       std::array<const T *, DIM> input_points, IntType num_out,
-                       std::array<const T *, DIM> output_points)
-    : impl_(decltype(impl_)(new PlanT3Impl<T, DIM>(opt, sign, num_in,
-                                                   input_points, num_out,
-                                                   output_points),
-                            [](void *ptr) {
+                       std::array<const T*, DIM> input_points, IntType num_out,
+                       std::array<const T*, DIM> output_points, IntType batch_size)
+    : impl_(decltype(impl_)(new PlanT3Impl<T, DIM>(batch_size, opt, sign, num_in, input_points,
+                                                   num_out, output_points),
+                            [](void* ptr) {
                               if (ptr) {
                                 delete reinterpret_cast<PlanT3Impl<T, DIM> *>(
                                     ptr);
@@ -75,26 +74,24 @@ PlanT3<T, DIM>::PlanT3(Options opt, int sign, IntType num_in,
 
 template <typename T, std::size_t DIM>
 PlanT3<T, DIM>::PlanT3(Options opt, int sign, std::array<T, DIM> input_min,
-                       std::array<T, DIM> input_max,
-                       std::array<T, DIM> output_min,
-                       std::array<T, DIM> output_max)
-    : impl_(decltype(impl_)(
-          new PlanT3Impl<T, DIM>(opt, sign, input_min, input_max, output_min,
-                                 output_max),
-          [](void *ptr) {
-            if (ptr) {
-              delete reinterpret_cast<PlanT3Impl<T, DIM> *>(ptr);
-            }
-          })) {}
+                       std::array<T, DIM> input_max, std::array<T, DIM> output_min,
+                       std::array<T, DIM> output_max, IntType batch_size)
+    : impl_(decltype(impl_)(new PlanT3Impl<T, DIM>(batch_size, opt, sign, input_min, input_max,
+                                                   output_min, output_max),
+                            [](void* ptr) {
+                              if (ptr) {
+                                delete reinterpret_cast<PlanT3Impl<T, DIM>*>(ptr);
+                              }
+                            })) {}
 
 template <typename T, std::size_t DIM>
-void PlanT3<T, DIM>::transform( std::complex<T> *out) {
-  reinterpret_cast<PlanT3Impl<T, DIM> *>(impl_.get())->transform(out);
+void PlanT3<T, DIM>::transform( std::complex<T> *out, IntType bdist) {
+  reinterpret_cast<PlanT3Impl<T, DIM>*>(impl_.get())->transform(out, bdist);
 }
 
 template <typename T, std::size_t DIM>
-void PlanT3<T, DIM>::add_input(const std::complex<T> *in) {
-  reinterpret_cast<PlanT3Impl<T, DIM> *>(impl_.get())->add_input(in);
+void PlanT3<T, DIM>::add_input(const std::complex<T> *in, IntType bdist) {
+  reinterpret_cast<PlanT3Impl<T, DIM> *>(impl_.get())->add_input(in,bdist);
 }
 
 template <typename T, std::size_t DIM>

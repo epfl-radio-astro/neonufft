@@ -71,10 +71,12 @@ public:
     return sizeof(ComplexType<T>) * (total_spread_grid_size + 2 * total_fft_grid_size);
   }
 
-  PlanT3Impl(Options opt, int sign, IntType num_in, std::array<const T*, DIM> input_points,
-             IntType num_out, std::array<const T*, DIM> output_points, api::StreamType stream,
+  PlanT3Impl(IntType batch_size, Options opt, int sign, IntType num_in,
+             std::array<const T*, DIM> input_points, IntType num_out,
+             std::array<const T*, DIM> output_points, api::StreamType stream,
              std::shared_ptr<Allocator> device_alloc)
-      : opt_(opt),
+      : batch_size_(batch_size),
+        opt_(opt),
         stream_(stream),
         device_alloc_(std::move(device_alloc)),
         sign_(sign),
@@ -116,10 +118,12 @@ public:
     this->set_output_points(num_out, output_points);
   }
 
-  PlanT3Impl(Options opt, int sign, std::array<T, DIM> input_min, std::array<T, DIM> input_max,
-             std::array<T, DIM> output_min, std::array<T, DIM> output_max, api::StreamType stream,
+  PlanT3Impl(IntType batch_size, Options opt, int sign, std::array<T, DIM> input_min,
+             std::array<T, DIM> input_max, std::array<T, DIM> output_min,
+             std::array<T, DIM> output_max, api::StreamType stream,
              std::shared_ptr<Allocator> device_alloc)
-      : opt_(opt),
+      : batch_size_(batch_size),
+        opt_(opt),
         stream_(stream),
         device_alloc_(std::move(device_alloc)),
         sign_(sign),
@@ -169,7 +173,7 @@ public:
     //                               grid_info_.input_offsets, input_scaling_factors, input_partition_,
     //                               rescaled_input_points_);
 
-    rescale_t3<T, DIM>(device_prop_, stream_, input_point_views, spread_grid_.shape(),
+    rescale_t3<T, DIM>(device_prop_, stream_, input_point_views, grid_info_.spread_grid_size,
                        grid_info_.input_offsets, input_scaling_factors, rescaled_input_points_);
   }
 
@@ -198,7 +202,7 @@ public:
     //                               grid_info_.output_offsets, output_scaling_factors,
     //                               output_partition, rescaled_output_points_);
 
-    rescale_t3<T, DIM>(device_prop_, stream_, loc_views, spread_grid_.shape(),
+    rescale_t3<T, DIM>(device_prop_, stream_, loc_views, grid_info_.spread_grid_size,
                        grid_info_.output_offsets, output_scaling_factors, rescaled_output_points_);
 
     // compute postphase with correction factors
@@ -209,32 +213,44 @@ public:
                            output_scaling_factors, postphase_);
   }
 
-  void transform(ComplexType<T>* out) {
-    fft_grid_.view().zero(stream_);
+  void transform(ComplexType<T>* out, IntType bdist) {
+    if (bdist <= 0) bdist = rescaled_output_points_.shape(0);
+
 
     std::array<ConstDeviceView<T, 1>, DIM> correction_factor_views;
     for (IntType dim = 0; dim < DIM; ++dim) {
       correction_factor_views[dim] = correction_factors_[dim].view();
     }
 
-    gpu::upsample<T, DIM>(device_prop_, stream_, NEONUFFT_MODE_ORDER_CMCL, spread_grid_,
-                          correction_factor_views, fft_grid_.view());
+    for (IntType idx_batch = 0; idx_batch < batch_size_; ++idx_batch) {
+      fft_grid_.view().zero(stream_);
+      gpu::upsample<T, DIM>(device_prop_, stream_, NEONUFFT_MODE_ORDER_CMCL,
+                            spread_grid_.slice_view(idx_batch), correction_factor_views,
+                            fft_grid_.view());
 
-    fft_grid_.transform();
+      fft_grid_.transform();
 
-    gpu::interpolation<T, DIM>(
-        device_prop_, stream_, kernel_param_, rescaled_output_points_, fft_grid_.view(), postphase_,
-        DeviceView<ComplexType<T>, 1>(out, rescaled_output_points_.size(), 1));
+      gpu::interpolation<T, DIM>(device_prop_, stream_, kernel_param_, rescaled_output_points_,
+                                 fft_grid_.view(), postphase_,
+                                 DeviceView<ComplexType<T>, 1>(out + idx_batch * bdist,
+                                                               rescaled_output_points_.size(), 1));
+    }
 
     // TODO: reset function
     //  Reset spread grid
     spread_grid_.view().zero(stream_);
   }
 
-  void add_input(const ComplexType<T>* in) {
-    ConstDeviceView<ComplexType<T>, 1> in_view(in, rescaled_input_points_.shape(0), 1);
-    gpu::spread<T, DIM>(device_prop_, stream_, kernel_param_, input_partition_, rescaled_input_points_,
-                        in_view, prephase_, spread_grid_);
+  void add_input(const ComplexType<T>* in, IntType bdist) {
+    if (bdist <= 0) bdist = rescaled_input_points_.shape(0);
+
+    for (IntType idx_batch = 0; idx_batch < batch_size_; ++idx_batch) {
+      ConstDeviceView<ComplexType<T>, 1> in_view(in + idx_batch * bdist,
+                                                 rescaled_input_points_.shape(0), 1);
+      gpu::spread<T, DIM>(device_prop_, stream_, kernel_param_, input_partition_,
+                          rescaled_input_points_, in_view, prephase_,
+                          spread_grid_.slice_view(idx_batch));
+    }
   }
 
 private:
@@ -256,30 +272,19 @@ private:
     }
 
     // reshape spread grid
-    {
-      bool new_grid = false;
-      for (std::size_t d = 0; d < DIM; ++d) {
-        new_grid |= (spread_grid_.shape(d) != grid_info_.spread_grid_size[d]);
-      }
-      if (new_grid) {
-        spread_grid_.reset(grid_info_.spread_grid_size, device_alloc_);
-      }
+    IndexArray<DIM + 1> batched_shape;
+    batched_shape[DIM] = batch_size_;
+    for (IntType d = 0; d < DIM; ++d) {
+      // no padding on GPU
+      batched_shape[d] = grid_info_.spread_grid_size[d];
     }
+    spread_grid_.reset(batched_shape, device_alloc_);
 
     // zero spread grid to prepare accumulation of input data
     spread_grid_.zero(stream_);
 
     // reshape fft grid
-    {
-      // create new grid if different
-      bool new_grid = false;
-      for (std::size_t d = 0; d < DIM; ++d) {
-        new_grid |= (grid_info_.fft_grid_size[d] != fft_grid_.shape(d));
-      }
-      if (new_grid) {
-        fft_grid_ = FFTGrid<T, DIM>(device_alloc_, stream_, grid_info_.fft_grid_size, sign_);
-      }
-    }
+    fft_grid_ = FFTGrid<T, DIM>(device_alloc_, stream_, grid_info_.fft_grid_size, sign_);
 
     // recompute correction factor for kernel windowing
     // we compute the inverse to use multiplication during execution
@@ -302,6 +307,7 @@ private:
     api::stream_synchronize(stream_);
   }
 
+  IntType batch_size_;
   Options opt_;
   api::DevicePropType device_prop_;
   std::shared_ptr<Allocator> device_alloc_;
@@ -315,7 +321,7 @@ private:
   KernelParameters<T> kernel_param_;
   FFTGrid<T, DIM> fft_grid_;
   GridInfoT3<T, DIM> grid_info_;
-  DeviceArray<ComplexType<T>, DIM> spread_grid_;
+  DeviceArray<ComplexType<T>, DIM + 1> spread_grid_;
   std::array<T, DIM> gam_;
   std::array<T, DIM> spread_grid_spacing_;
   DeviceArray<PartitionGroup, DIM> input_partition_;

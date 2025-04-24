@@ -61,16 +61,17 @@ public:
         grid_info.fft_grid_size.begin(), grid_info.fft_grid_size.end(), 1,
         std::multiplies<IntType>());
 
-    return sizeof(std::complex<T>) *
-           (total_spread_grid_size + total_fft_grid_size);
+    return sizeof(std::complex<T>) * (total_spread_grid_size + total_fft_grid_size);
   }
 
-  PlanT3Impl(Options opt, int sign, IntType num_in,
-             std::array<const T *, DIM> input_points, IntType num_out,
-             std::array<const T *, DIM> output_points)
-      : opt_(opt), th_pool_(opt_.num_threads), sign_(sign),
+  PlanT3Impl(IntType batch_size, Options opt, int sign, IntType num_in,
+             std::array<const T*, DIM> input_points, IntType num_out,
+             std::array<const T*, DIM> output_points)
+      : batch_size_(batch_size),
+        opt_(opt),
+        th_pool_(opt_.num_threads),
+        sign_(sign),
         kernel_param_(opt_.tol, opt_.upsampfac, opt.kernel_approximation) {
-
     std::array<T, DIM> input_min, input_max, output_min, output_max;
 
     for (IntType d = 0; d < DIM; ++d) {
@@ -89,19 +90,18 @@ public:
     this->init(input_min, input_max, output_min, output_max);
     this->set_input_points(num_in, input_points);
     this->set_output_points(num_out, output_points);
-
-    // TODO: set points
-    // this->set_points(num_in, input_points, num_out, output_points);
   }
 
-  PlanT3Impl(Options opt, int sign, std::array<T, DIM> input_min,
+  PlanT3Impl(IntType batch_size, Options opt, int sign, std::array<T, DIM> input_min,
              std::array<T, DIM> input_max, std::array<T, DIM> output_min,
              std::array<T, DIM> output_max)
-      : opt_(opt), th_pool_(opt_.num_threads), sign_(sign),
+      : batch_size_(batch_size),
+        opt_(opt),
+        th_pool_(opt_.num_threads),
+        sign_(sign),
         kernel_param_(opt_.tol, opt_.upsampfac, opt_.kernel_approximation),
-        grid_info_(kernel_param_.n_spread, opt_.upsampfac,
-                   opt_.recenter_threshold, input_min, input_max, output_min,
-                   output_max) {
+        grid_info_(kernel_param_.n_spread, opt_.upsampfac, opt_.recenter_threshold, input_min,
+                   input_max, output_min, output_max) {
     this->init(input_min, input_max, output_min, output_max);
   }
 
@@ -237,13 +237,8 @@ public:
     }
   }
 
-  void transform(std::complex<T> *out) {
-    fft_grid_.padded_view().zero();
-
-    // TODO: folding might not be needed. Do we ever have points on the actual
-    // edges? check how points are rescaled. Unit tests show values in padding
-    // is always 0
-    // fold_padding<T, DIM>(kernel_param_.n_spread, spread_grid_);
+  void transform(std::complex<T>* out, IntType bdist) {
+    if (bdist <= 0) bdist = rescaled_output_points_.shape(0);
 
     std::array<ConstHostView<T, 1>, DIM> correction_factor_views;
     for (IntType dim = 0; dim < DIM; ++dim) {
@@ -253,77 +248,90 @@ public:
     IndexArray<DIM> padding;
     padding.fill(spread_padding(kernel_param_.n_spread));
 
-    upsample<T, DIM>(NEONUFFT_MODE_ORDER_CMCL,
-                     spread_grid_.sub_view(padding, grid_info_.spread_grid_size),
-                     correction_factor_views, fft_grid_.view());
+    for (IntType idx_batch = 0; idx_batch < batch_size_; ++idx_batch) {
+      // TODO: move to init
+      fft_grid_.padded_view().zero();
 
-    fft_grid_.transform();
+      std::complex<T>* out_batch = out + idx_batch * bdist;
 
-    if (th_pool_.num_threads() > 1) {
-      th_pool_.parallel_for(
-          {0, rescaled_output_points_.size()}, [&](IntType, BlockRange range) {
-            auto sub_view = rescaled_output_points_.sub_view(
-                range.begin, range.end - range.begin);
-            interpolate<T, DIM>(opt_.kernel_type, kernel_param_,
-                                fft_grid_.view(), sub_view.shape(0),
-                                sub_view.data(), out);
-          });
-    } else {
+      // TODO: folding might not be needed. Do we ever have points on the actual
+      // edges? check how points are rescaled. Unit tests show values in padding
+      // is always 0
+      // fold_padding<T, DIM>(kernel_param_.n_spread, spread_grid_);
 
-      interpolate<T, DIM>(opt_.kernel_type, kernel_param_, fft_grid_.view(),
-                          rescaled_output_points_.shape(0),
-                          rescaled_output_points_.data(), out);
-    }
-    // TODO: move to kernel. NOTE: integration into interpolate functions
-    // results in large performance hit with clang (18)
-    for (IntType i = 0; i < postphase_.shape(0); ++i) {
-      out[i] *= postphase_[i];
+      upsample<T, DIM>(
+          NEONUFFT_MODE_ORDER_CMCL,
+          spread_grid_.slice_view(idx_batch).sub_view(padding, grid_info_.spread_grid_size),
+          correction_factor_views, fft_grid_.view());
+
+      fft_grid_.transform();
+
+      if (th_pool_.num_threads() > 1) {
+        th_pool_.parallel_for({0, rescaled_output_points_.size()}, [&](IntType, BlockRange range) {
+          auto sub_view = rescaled_output_points_.sub_view(range.begin, range.end - range.begin);
+          interpolate<T, DIM>(opt_.kernel_type, kernel_param_, fft_grid_.view(), sub_view.shape(0),
+                              sub_view.data(), out_batch);
+        });
+      } else {
+        interpolate<T, DIM>(opt_.kernel_type, kernel_param_, fft_grid_.view(),
+                            rescaled_output_points_.shape(0), rescaled_output_points_.data(),
+                            out_batch);
+      }
+      // TODO: move to kernel. NOTE: integration into interpolate functions
+      // results in large performance hit with clang (18)
+      for (IntType i = 0; i < postphase_.shape(0); ++i) {
+        out_batch[i] *= postphase_[i];
+      }
     }
 
     // Reset spread grid
     spread_grid_.zero();
   }
 
-  void add_input(const std::complex<T> *in) {
-    if (th_pool_.num_threads() > 1) {
-      // spread even groups
-      th_pool_.parallel_for(
-          {0, IntType(input_partition_.size())}, 2,
-          [&](IntType, BlockRange range) {
-            for (IntType idx_group = range.begin; idx_group < range.end;
-                 ++idx_group) {
-              const auto &g = input_partition_[idx_group];
-              if (idx_group % 2 == 0 && g.size) {
-                auto sub_view = rescaled_input_points_.sub_view(g.begin, g.size);
-                spread<T, DIM>(opt_.kernel_type, kernel_param_,
-                               sub_view.shape(0), sub_view.data(), in,
-                               prephase_.size() ? prephase_.data() : nullptr,
-                               grid_info_.spread_grid_size, spread_grid_);
-              }
-            }
-          });
+  void add_input(const std::complex<T>* in, IntType bdist) {
+    if (bdist <= 0) bdist = rescaled_input_points_.shape(0);
 
-      // spread odd groups
-      th_pool_.parallel_for(
-          {0, IntType(input_partition_.size())}, 2,
-          [&](IntType, BlockRange range) {
-            for (IntType idx_group = range.begin; idx_group < range.end;
-                 ++idx_group) {
-              const auto &g = input_partition_[idx_group];
-              if (idx_group % 2 == 1 && g.size) {
-                auto sub_view = rescaled_input_points_.sub_view(g.begin, g.size);
-                spread<T, DIM>(opt_.kernel_type, kernel_param_,
-                               sub_view.shape(0), sub_view.data(), in,
-                               prephase_.size() ? prephase_.data() : nullptr,
-                               grid_info_.spread_grid_size, spread_grid_);
+    for (IntType idx_batch = 0; idx_batch < batch_size_; ++idx_batch) {
+      const std::complex<T>* in_batch = in + idx_batch * bdist;
+
+      auto spread_grid_batch = spread_grid_.slice_view(idx_batch);
+
+      if (th_pool_.num_threads() > 1) {
+        // spread even groups
+        th_pool_.parallel_for(
+            {0, IntType(input_partition_.size())}, 2, [&](IntType, BlockRange range) {
+              for (IntType idx_group = range.begin; idx_group < range.end; ++idx_group) {
+                const auto& g = input_partition_[idx_group];
+                if (idx_group % 2 == 0 && g.size) {
+                  auto sub_view = rescaled_input_points_.sub_view(g.begin, g.size);
+                  spread<T, DIM>(opt_.kernel_type, kernel_param_, sub_view.shape(0),
+                                 sub_view.data(), in_batch,
+                                 prephase_.size() ? prephase_.data() : nullptr,
+                                 grid_info_.spread_grid_size, spread_grid_batch);
+                }
               }
-            }
-          });
-    } else {
-      spread<T, DIM>(opt_.kernel_type, kernel_param_,
-                     rescaled_input_points_.shape(0), rescaled_input_points_.data(),
-                     in, prephase_.size() ? prephase_.data() : nullptr,
-                     grid_info_.spread_grid_size, spread_grid_);
+            });
+
+        // spread odd groups
+        th_pool_.parallel_for(
+            {0, IntType(input_partition_.size())}, 2, [&](IntType, BlockRange range) {
+              for (IntType idx_group = range.begin; idx_group < range.end; ++idx_group) {
+                const auto& g = input_partition_[idx_group];
+                if (idx_group % 2 == 1 && g.size) {
+                  auto sub_view = rescaled_input_points_.sub_view(g.begin, g.size);
+                  spread<T, DIM>(opt_.kernel_type, kernel_param_, sub_view.shape(0),
+                                 sub_view.data(), in_batch,
+                                 prephase_.size() ? prephase_.data() : nullptr,
+                                 grid_info_.spread_grid_size, spread_grid_batch);
+                }
+              }
+            });
+      } else {
+        spread<T, DIM>(opt_.kernel_type, kernel_param_, rescaled_input_points_.shape(0),
+                       rescaled_input_points_.data(), in_batch,
+                       prephase_.size() ? prephase_.data() : nullptr, grid_info_.spread_grid_size,
+                       spread_grid_batch);
+      }
     }
   }
 
@@ -331,7 +339,7 @@ private:
   void init(std::array<T, DIM> input_min, std::array<T, DIM> input_max,
             std::array<T, DIM> output_min, std::array<T, DIM> output_max) {
     for (IntType d = 0; d < DIM; ++d) {
-      if(input_min[d] > input_max[d]) {
+      if (input_min[d] > input_max[d]) {
         throw InputError("Invalid input bounds.");
       }
       if (output_min[d] > output_max[d]) {
@@ -340,38 +348,24 @@ private:
     }
 
     for (IntType d = 0; d < DIM; ++d) {
-      contrib::set_nhg_type3<T>(grid_info_.output_half_extent[d],
-                                grid_info_.input_half_extent[d], opt_.upsampfac,
-                                grid_info_.spread_grid_size[d],
+      contrib::set_nhg_type3<T>(grid_info_.output_half_extent[d], grid_info_.input_half_extent[d],
+                                opt_.upsampfac, grid_info_.spread_grid_size[d],
                                 &spread_grid_spacing_[d], &gam_[d]);
     }
 
     // reshape spread grid
-    {
-      bool new_grid = false;
-      for (std::size_t d = 0; d < DIM; ++d) {
-        new_grid |=
-            (spread_grid_.shape(d) != grid_info_.padded_spread_grid_size[d]);
-      }
-      if (new_grid) {
-        spread_grid_.reset(grid_info_.padded_spread_grid_size);
-      }
+    IndexArray<DIM + 1> batched_shape;
+    batched_shape[DIM] = batch_size_;
+    for (IntType d = 0; d < DIM; ++d) {
+      batched_shape[d] = grid_info_.padded_spread_grid_size[d];
     }
+    spread_grid_.reset(batched_shape);
 
     // zero spread grid to prepare accumulation of input data
     spread_grid_.zero();
 
     // reshape fft grid
-    {
-      // create new grid if different
-      bool new_grid = false;
-      for (std::size_t d = 0; d < DIM; ++d) {
-        new_grid |= (grid_info_.fft_grid_size[d] != fft_grid_.shape(d));
-      }
-      if (new_grid) {
-        fft_grid_ = FFTGrid<T, DIM>(opt_.num_threads, grid_info_.fft_grid_size, sign_);
-      }
-    }
+    fft_grid_ = FFTGrid<T, DIM>(opt_.num_threads, grid_info_.fft_grid_size, sign_);
 
     // recompute correction factor for kernel windowing
     // we compute the inverse to use multiplication during execution
@@ -386,6 +380,7 @@ private:
     }
   }
 
+  IntType batch_size_;
   Options opt_;
   ThreadPool th_pool_;
   HostArray<Point<T, DIM>, 1> rescaled_input_points_;
@@ -398,7 +393,7 @@ private:
   KernelParameters<T> kernel_param_;
   FFTGrid<T, DIM> fft_grid_;
   GridInfoT3<T, DIM> grid_info_;
-  HostArray<std::complex<T>, DIM> spread_grid_;
+  HostArray<std::complex<T>, DIM + 1> spread_grid_;
   std::array<T, DIM> gam_;
   std::array<T, DIM> spread_grid_spacing_;
 };
@@ -411,4 +406,4 @@ template class PlanT3Impl<double, 1>;
 template class PlanT3Impl<double, 2>;
 template class PlanT3Impl<double, 3>;
 
-} // namespace neonufft
+}  // namespace neonufft

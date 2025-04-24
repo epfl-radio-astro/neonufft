@@ -76,57 +76,61 @@ std::vector<std::complex<T>> rand_vec_cpx(GEN &&rand_gen, IntType num, T min, T 
 template <typename T>
 void compare_t3(bool use_gpu, int sign, double upsampfac, double tol, IntType num_in,
                 const T* in_points_x, const T* in_points_y, const T* in_points_z, IntType num_out,
-                const T* out_points_x, const T* out_points_y, const T* out_points_z) {
+                const T* out_points_x, const T* out_points_y, const T* out_points_z,
+                int batch_size = 1) {
   Options opt;
   opt.upsampfac = upsampfac;
   opt.tol = tol;
 
   std::minstd_rand rand_gen(42);
 
-  auto input = rand_vec_cpx<T>(rand_gen, num_in, -4, 4);
+  auto input = rand_vec_cpx<T>(rand_gen, num_in * batch_size, -4, 4);
 
-  std::vector<std::complex<T>> output(num_out);
-  std::vector<std::complex<T>> output_ref(num_out);
+  std::vector<std::complex<T>> output(num_out * batch_size);
+  std::vector<std::complex<T>> output_ref(num_out * batch_size);
 
-  if (!in_points_y) {
-    // DIM == 1
-    test::nuft_direct_t3<T, 1>(sign, num_in, {in_points_x}, input.data(), num_out, {out_points_x},
-                               output_ref.data());
+  for (int idx_batch = 0; idx_batch < batch_size; ++idx_batch) {
+    if (!in_points_y) {
+      // DIM == 1
+      test::nuft_direct_t3<T, 1>(sign, num_in, {in_points_x}, input.data() + idx_batch * num_in,
+                                 num_out, {out_points_x}, output_ref.data() + idx_batch * num_out);
 
-  } else if (!in_points_z) {
-    // DIM == 2
-    test::nuft_direct_t3<T, 2>(sign, num_in, {in_points_x, in_points_y}, input.data(), num_out,
-                               {out_points_x, out_points_y}, output_ref.data());
-  } else {
-    // DIM == 3
-    test::nuft_direct_t3<T, 3>(sign, num_in, {in_points_x, in_points_y, in_points_z}, input.data(),
-                               num_out, {out_points_x, out_points_y, out_points_z},
-                               output_ref.data());
+    } else if (!in_points_z) {
+      // DIM == 2
+      test::nuft_direct_t3<T, 2>(
+          sign, num_in, {in_points_x, in_points_y}, input.data() + idx_batch * num_in, num_out,
+          {out_points_x, out_points_y}, output_ref.data() + idx_batch * num_out);
+    } else {
+      // DIM == 3
+      test::nuft_direct_t3<T, 3>(sign, num_in, {in_points_x, in_points_y, in_points_z},
+                                 input.data() + idx_batch * num_in, num_out,
+                                 {out_points_x, out_points_y, out_points_z},
+                                 output_ref.data() + idx_batch * num_out);
+    }
   }
-
 
   if(!use_gpu) {
     if (!in_points_y) {
       // DIM == 1
-      PlanT3<T, 1> plan(opt, sign, num_in, {in_points_x}, num_out, {out_points_x});
-      plan.add_input(input.data());
-      plan.transform(output.data());
+      PlanT3<T, 1> plan(opt, sign, num_in, {in_points_x}, num_out, {out_points_x}, batch_size);
+      plan.add_input(input.data(), num_in);
+      plan.transform(output.data(), num_out);
 
     } else if (!in_points_z) {
       // DIM == 2
 
       PlanT3<T, 2> plan(opt, sign, num_in, {in_points_x, in_points_y}, num_out,
-                        {out_points_x, out_points_y});
-      plan.add_input(input.data());
-      plan.transform(output.data());
+                        {out_points_x, out_points_y}, batch_size);
+      plan.add_input(input.data(), num_in);
+      plan.transform(output.data(), num_out);
 
     } else {
       // DIM == 3
 
       PlanT3<T, 3> plan(opt, sign, num_in, {in_points_x, in_points_y, in_points_z}, num_out,
-                        {out_points_x, out_points_y, out_points_z});
-      plan.add_input(input.data());
-      plan.transform(output.data());
+                        {out_points_x, out_points_y, out_points_z}, batch_size);
+      plan.add_input(input.data(), num_in);
+      plan.transform(output.data(), num_out);
     }
   } else {
 #if defined(NEONUFFT_CUDA) || defined(NEONUFFT_ROCM)
@@ -135,48 +139,48 @@ void compare_t3(bool use_gpu, int sign, double upsampfac, double tol, IntType nu
 
     gpu::DeviceArray<gpu::ComplexType<T>, 1> input_device(input.size(), device_alloc);
     gpu::DeviceArray<gpu::ComplexType<T>, 1> output_device(output.size(), device_alloc);
-    gpu::DeviceArray<T, 2> in_points_device({input_device.size(), 3}, device_alloc);
-    gpu::DeviceArray<T, 2> out_points_device({output_device.size(), 3}, device_alloc);
+    gpu::DeviceArray<T, 2> in_points_device({num_in, 3}, device_alloc);
+    gpu::DeviceArray<T, 2> out_points_device({num_out, 3}, device_alloc);
 
     gpu::memcopy(ConstHostView<std::complex<T>, 1>(input.data(), input.size(), 1), input_device,
                  stream);
-    gpu::memcopy(ConstHostView<T, 1>(in_points_x, input.size(), 1), in_points_device.slice_view(0),
+    gpu::memcopy(ConstHostView<T, 1>(in_points_x, num_in, 1), in_points_device.slice_view(0),
             stream);
-    gpu::memcopy(ConstHostView<T, 1>(out_points_x, output.size(), 1), out_points_device.slice_view(0),
+    gpu::memcopy(ConstHostView<T, 1>(out_points_x, num_out, 1), out_points_device.slice_view(0),
             stream);
 
     if (!in_points_y) {
       // DIM == 1
 
       gpu::PlanT3<T, 1> plan(opt, sign, num_in, {in_points_device.slice_view(0).data()}, num_out,
-                             {out_points_device.slice_view(0).data()}, stream);
-      plan.add_input(input_device.data());
-      plan.transform(output_device.data());
+                             {out_points_device.slice_view(0).data()}, stream, batch_size);
+      plan.add_input(input_device.data(), num_in);
+      plan.transform(output_device.data(), num_out);
 
     } else if (!in_points_z) {
       // DIM == 2
-      gpu::memcopy(ConstHostView<T, 1>(in_points_y, input.size(), 1),
+      gpu::memcopy(ConstHostView<T, 1>(in_points_y, num_in, 1),
                    in_points_device.slice_view(1), stream);
-      gpu::memcopy(ConstHostView<T, 1>(out_points_y, output.size(), 1),
+      gpu::memcopy(ConstHostView<T, 1>(out_points_y, num_out, 1),
                    out_points_device.slice_view(1), stream);
 
       gpu::PlanT3<T, 2> plan(
           opt, sign, num_in,
           {in_points_device.slice_view(0).data(), in_points_device.slice_view(1).data()}, num_out,
-          {out_points_device.slice_view(0).data(), out_points_device.slice_view(1).data()}, stream);
-      plan.add_input(input_device.data());
-      plan.transform(output_device.data());
+          {out_points_device.slice_view(0).data(), out_points_device.slice_view(1).data()}, stream, batch_size);
+      plan.add_input(input_device.data(), num_in);
+      plan.transform(output_device.data(), num_out);
 
     } else {
       // DIM == 3
 
-      gpu::memcopy(ConstHostView<T, 1>(in_points_y, input.size(), 1),
+      gpu::memcopy(ConstHostView<T, 1>(in_points_y, num_in, 1),
                    in_points_device.slice_view(1), stream);
-      gpu::memcopy(ConstHostView<T, 1>(in_points_z, input.size(), 1),
+      gpu::memcopy(ConstHostView<T, 1>(in_points_z, num_in, 1),
                    in_points_device.slice_view(2), stream);
-      gpu::memcopy(ConstHostView<T, 1>(out_points_y, output.size(), 1),
+      gpu::memcopy(ConstHostView<T, 1>(out_points_y, num_out, 1),
                    out_points_device.slice_view(1), stream);
-      gpu::memcopy(ConstHostView<T, 1>(out_points_z, output.size(), 1),
+      gpu::memcopy(ConstHostView<T, 1>(out_points_z, num_out, 1),
                    out_points_device.slice_view(2), stream);
       gpu::PlanT3<T, 3> plan(
           opt, sign, num_in,
@@ -185,9 +189,9 @@ void compare_t3(bool use_gpu, int sign, double upsampfac, double tol, IntType nu
           num_out,
           {out_points_device.slice_view(0).data(), out_points_device.slice_view(1).data(),
            out_points_device.slice_view(2).data()},
-          stream);
-      plan.add_input(input_device.data());
-      plan.transform(output_device.data());
+          stream, batch_size);
+      plan.add_input(input_device.data(), num_in);
+      plan.transform(output_device.data(), num_out);
     }
 
     gpu::memcopy(output_device, HostView<std::complex<T>, 1>(output.data(), output.size(), 1),
@@ -199,32 +203,34 @@ void compare_t3(bool use_gpu, int sign, double upsampfac, double tol, IntType nu
 #endif
   }
 
-  IntType count_below_tol = 0;
-  for (IntType i = 0; i < num_out; ++i) {
-    T rel_error_real = output_ref[i].real()
-                           ? std::abs(output[i].real() - output_ref[i].real()) /
-                                 output_ref[i].real()
-                           : output[i].real();
-    T rel_error_imag = output_ref[i].imag()
-                           ? std::abs(output[i].imag() - output_ref[i].imag()) /
-                                 output_ref[i].imag()
-                           : output[i].imag();
+  for (int idx_batch = 0; idx_batch < batch_size; ++idx_batch) {
+    IntType count_below_tol = 0;
+    const auto* out_batch = output.data() + idx_batch * batch_size;
+    const auto* out_ref_batch = output_ref.data() + idx_batch * batch_size;
+    for (IntType i = 0; i < num_out; ++i) {
+      T rel_error_real =
+          out_ref_batch[i].real()
+              ? std::abs(out_batch[i].real() - out_ref_batch[i].real()) / out_ref_batch[i].real()
+              : out_batch[i].real();
+      T rel_error_imag = out_ref_batch[i].imag() ? std::abs(out_batch[i].imag() - out_ref_batch[i].imag()) /
+                                                    out_ref_batch[i].imag()
+                                              : out_batch[i].imag();
 
-    const auto relative_error =
-        std::norm(output[i] - output_ref[i]) / std::norm(output_ref[i]);
+      const auto relative_error = std::norm(out_batch[i] - out_ref_batch[i]) / std::norm(out_ref_batch[i]);
 
-    if (relative_error <= tol) {
-      ++count_below_tol;
+      if (relative_error <= tol) {
+        ++count_below_tol;
+      }
+
+      // test each value with larger tolerance, since this is no hard upper
+      // bound
+      EXPECT_LT(relative_error, 300 * tol);
     }
 
-    // test each value with larger tolerance, since this is no hard upper
-    // bound
-    EXPECT_LT(relative_error, 300 * tol);
+    // we expect 94% to be below tolerance for large output numbers
+    const double expected = num_out > 20 ? 0.94 : 0.85;
+    EXPECT_GT(double(count_below_tol) / double(num_out), expected);
   }
-
-  // we expect 94% to be below tolerance for large output numbers
-  const double expected = num_out > 20 ? 0.94 : 0.85;
-  EXPECT_GT(double(count_below_tol) / double(num_out), expected);
 }
 
 } // namespace
@@ -306,6 +312,47 @@ TEST(Type3TestEdges, d3) {
   compare_t3<double>(false, -1, 2, 1e-15, points_x.size(), points_x.data(), points_y.data(),
                      points_z.data(), points_x.size(), points_x.data(), points_y.data(),
                      points_z.data());
+}
+
+TEST(Type3TestBatched, d1) {
+  const int batch_size = 3;
+  const IntType num_in = 200;
+  const IntType num_out = 55;
+  std::minstd_rand rand_gen(42);
+  auto in_points_x = rand_vec<double>(rand_gen, num_in, 20, 30);
+  auto out_points_x = rand_vec<double>(rand_gen, num_out, 20, 30);
+  compare_t3<double>(false, -1, 2, 1e-6, in_points_x.size(), in_points_x.data(), nullptr, nullptr,
+                     out_points_x.size(), out_points_x.data(), nullptr, nullptr, batch_size);
+}
+
+TEST(Type3TestBatched, d2) {
+  const int batch_size = 3;
+  const IntType num_in = 80;
+  const IntType num_out = 55;
+  std::minstd_rand rand_gen(42);
+  auto in_points_x = rand_vec<double>(rand_gen, num_in, 20, 30);
+  auto out_points_x = rand_vec<double>(rand_gen, num_out, 20, 30);
+  auto in_points_y = rand_vec<double>(rand_gen, num_in, -20, 20);
+  auto out_points_y = rand_vec<double>(rand_gen, num_out, -20, 20);
+  compare_t3<double>(false, -1, 2, 1e-6, in_points_x.size(), in_points_x.data(),
+                     in_points_y.data(), nullptr, out_points_x.size(), out_points_x.data(),
+                     out_points_y.data(), nullptr, batch_size);
+}
+
+TEST(Type3TestBatched, d3) {
+  const int batch_size = 3;
+  const IntType num_in = 80;
+  const IntType num_out = 55;
+  std::minstd_rand rand_gen(42);
+  auto in_points_x = rand_vec<double>(rand_gen, num_in, 20, 30);
+  auto out_points_x = rand_vec<double>(rand_gen, num_out, 20, 30);
+  auto in_points_y = rand_vec<double>(rand_gen, num_in, -20, 20);
+  auto out_points_y = rand_vec<double>(rand_gen, num_out, -20, 20);
+  auto in_points_z = rand_vec<double>(rand_gen, num_in, -20, -15);
+  auto out_points_z = rand_vec<double>(rand_gen, num_out, -20, -15);
+  compare_t3<double>(false, -1, 2, 1e-6, in_points_x.size(), in_points_x.data(),
+                     in_points_y.data(), out_points_z.data(), out_points_x.size(),
+                     out_points_x.data(), out_points_y.data(), out_points_z.data(), batch_size);
 }
 
 

@@ -57,10 +57,12 @@ public:
 
   PlanT3(Options opt, int sign, IntType num_in, std::array<const T*, DIM> input_points,
          IntType num_out, std::array<const T*, DIM> output_points, StreamType stream,
+         IntType batch_size = 1,
          std::shared_ptr<Allocator> device_alloc = std::make_shared<DeviceAllocator>());
 
   PlanT3(Options opt, int sign, std::array<T, DIM> input_min, std::array<T, DIM> input_max,
          std::array<T, DIM> output_min, std::array<T, DIM> output_max, StreamType stream,
+         IntType batch_size = 1,
          std::shared_ptr<Allocator> device_alloc = std::make_shared<DeviceAllocator>());
 
   void set_input_points(IntType num_in,
@@ -69,9 +71,9 @@ public:
   void set_output_points(IntType num_out,
                          std::array<const T *, DIM> output_points);
 
-  void add_input(const ComplexType<T> *in);
+  void add_input(const ComplexType<T>* in, IntType bdist = 0);
 
-  void transform(ComplexType<T> *out);
+  void transform(ComplexType<T>* out, IntType bdist = 0);
 
 private:
   std::unique_ptr<void, void (*)(void *)> impl_;

@@ -61,12 +61,12 @@ public:
                                         std::array<T, DIM> output_max);
 
   PlanT3(Options opt, int sign, IntType num_in,
-         std::array<const T *, DIM> input_points, IntType num_out,
-         std::array<const T *, DIM> output_points);
+         std::array<const T*, DIM> input_points, IntType num_out,
+         std::array<const T*, DIM> output_points, IntType batch_size = 1);
 
   PlanT3(Options opt, int sign, std::array<T, DIM> input_min,
          std::array<T, DIM> input_max, std::array<T, DIM> output_min,
-         std::array<T, DIM> output_max);
+         std::array<T, DIM> output_max, IntType batch_size = 1);
 
   void set_input_points(IntType num_in,
                         std::array<const T *, DIM> input_points);
@@ -74,9 +74,9 @@ public:
   void set_output_points(IntType num_out,
                          std::array<const T *, DIM> output_points);
 
-  void add_input(const std::complex<T> *in);
+  void add_input(const std::complex<T>* in, IntType bdist = 0);
 
-  void transform(std::complex<T> *out);
+  void transform(std::complex<T>* out, IntType bdist = 0);
 
 private:
   std::unique_ptr<void, void (*)(void *)> impl_;
