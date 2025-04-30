@@ -49,17 +49,16 @@ public:
                                         std::array<T, DIM> output_max) {
     KernelParameters<T> kernel_param(opt.tol, opt.upsampfac,
                                      opt.kernel_approximation);
-    GridInfoT3<T, DIM> grid_info(kernel_param.n_spread, opt.upsampfac,
-                       opt.recenter_threshold, input_min, input_max, output_min,
-                       output_max);
+    GridInfoT3<T, DIM> grid_info(kernel_param.n_spread, opt.upsampfac, opt.recenter_threshold,
+                                 input_min, input_max, output_min, output_max);
 
-    const std::uint64_t total_spread_grid_size = std::reduce(
-        grid_info.padded_spread_grid_size.begin(),
-        grid_info.padded_spread_grid_size.end(), 1, std::multiplies<IntType>());
+    std::uint64_t total_spread_grid_size = 1;
+    std::uint64_t total_fft_grid_size = 1;
 
-    const std::uint64_t total_fft_grid_size = std::reduce(
-        grid_info.fft_grid_size.begin(), grid_info.fft_grid_size.end(), 1,
-        std::multiplies<IntType>());
+    for (IntType d = 0; d < DIM; ++d) {
+      total_spread_grid_size *= grid_info.padded_spread_grid_size[d];
+      total_fft_grid_size *= grid_info.fft_grid_size[d];
+    }
 
     return sizeof(std::complex<T>) * (total_spread_grid_size + total_fft_grid_size);
   }
