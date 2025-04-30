@@ -75,6 +75,8 @@ public:
 
   void transform(ComplexType<T>* out, IntType bdist = 0);
 
+  void reset();
+
 private:
   std::unique_ptr<void, void (*)(void *)> impl_;
 };

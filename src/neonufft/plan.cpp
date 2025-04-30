@@ -108,6 +108,11 @@ void PlanT3<T, DIM>::set_output_points(
       ->set_output_points(num_out, output_points);
 }
 
+template <typename T, std::size_t DIM>
+void PlanT3<T, DIM>::reset() {
+  reinterpret_cast<PlanT3Impl<T, DIM>*>(impl_.get())->reset();
+}
+
 template class PlanT3<float, 1>;
 template class PlanT3<float, 2>;
 template class PlanT3<float, 3>;

@@ -235,11 +235,9 @@ public:
                                  DeviceView<ComplexType<T>, 1>(out + idx_batch * bdist,
                                                                rescaled_output_points_.size(), 1));
     }
-
-    // TODO: reset function
-    //  Reset spread grid
-    spread_grid_.view().zero(stream_);
   }
+
+  void reset() { spread_grid_.view().zero(stream_); }
 
   void add_input(const ComplexType<T>* in, IntType bdist) {
     if (bdist <= 0) bdist = rescaled_input_points_.shape(0);

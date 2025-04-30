@@ -283,9 +283,9 @@ public:
       }
     }
 
-    // Reset spread grid
-    spread_grid_.zero();
   }
+
+  void reset() { spread_grid_.zero(); }
 
   void add_input(const std::complex<T>* in, IntType bdist) {
     if (bdist <= 0) bdist = rescaled_input_points_.shape(0);
