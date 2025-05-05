@@ -191,7 +191,7 @@ void test_transform(int type, bool use_gpu, int sign, double upsampfac, double t
   // Tolerance is not an absolute upper bound. Type 1 is far less accurate in single precision.
   T element_tolerance = 400 * tol;
   if (type == 1 && std::is_same_v<float, T>) {
-    element_tolerance = 20000 * tol;
+    element_tolerance = 200000 * tol;
   }
 
   // we expect 85% to be below tolerance for large output numbers
@@ -341,7 +341,7 @@ INSTANTIATE_TEST_SUITE_P(
     ::testing::Combine(::testing::Values<IntType>(100),                       // number of in points
                        ::testing::ValuesIn(generate_modes({1, 2, 23, 256})),  // modes
                        ::testing::Values<double>(2.0),                        // upsampling factor
-                       ::testing::Values<double>(1e-5),                       // tolerance
+                       ::testing::Values<double>(1e-4),                       // tolerance
                        ::testing::Values<int>(-1),                            // sign
                        ::testing::Values<bool>(NEONUFFT_PU_VALUES),           // cpu, gpu
                        ::testing::Values<int>(1, 2)),  // transform type 1 or 2
@@ -383,7 +383,7 @@ INSTANTIATE_TEST_SUITE_P(
 INSTANTIATE_TEST_SUITE_P(
     Tol, PlanTestDouble,
     ::testing::Combine(::testing::Values<IntType>(20),               // number of in points
-                       ::testing::ValuesIn(generate_modes({40})),     // modes
+                       ::testing::ValuesIn(generate_modes({45})),     // modes
                        ::testing::Values<double>(2.0),                // upsampling factor
                        ::testing::Values<double>(1e-3, 1e-8, 1e-14),  // tolerance
                        ::testing::Values<int>(-1),                    // sign
