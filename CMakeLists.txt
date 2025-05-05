@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.20 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.21 FATAL_ERROR)
 file(READ "VERSION" NEONUFFT_VERSION)
 string(STRIP ${NEONUFFT_VERSION} NEONUFFT_VERSION)
 project(neonufft LANGUAGES CXX VERSION "${NEONUFFT_VERSION}")
@@ -50,6 +50,11 @@ cmake_dependent_option(NEONUFFT_BUNDLED_GOOGLETEST "Use bundled google test lib"
 option(NEONUFFT_BUILD_TESTS "Build tests" OFF)
 option(NEONUFFT_INSTALL_LIB "Install library" ON)
 
+set(NEONUFFT_GPU "OFF" CACHE STRING "GPU backend")
+set_property(CACHE NEONUFFT_GPU PROPERTY STRINGS
+	"OFF" "CUDA" "ROCM"
+	)
+
 set(NEONUFFT_THREADING ${_DEFAULT_THREADING} CACHE STRING "Threading backend.")
 set_property(CACHE NEONUFFT_THREADING PROPERTY STRINGS "OPENMP" "TBB" "NATIVE")
 
@@ -57,6 +62,20 @@ set(NEONUFFT_FLAGS "")
 set(NEONUFFT_EXTERNAL_LIBS "")
 set(NEONUFFT_EXTERNAL_LIBS_PUBLIC "")
 set(NEONUFFT_INCLUDE_DIRS "")
+set(NEONUFFT_GPU_EXTERNAL_LIBS "")
+set(NEONUFFT_GPU_EXTERNAL_LIBS_PUBLIC "")
+
+set(NEONUFFT_CUDA OFF)
+set(NEONUFFT_ROCM OFF)
+if(NEONUFFT_GPU)
+	if(NEONUFFT_GPU STREQUAL "CUDA")
+		set(NEONUFFT_CUDA ON)
+	elseif(NEONUFFT_GPU STREQUAL "ROCM")
+		set(NEONUFFT_ROCM ON)
+	else()
+		message(FATAL_ERROR "Invalid GPU backend")
+	endif()
+endif()
 
 # set language and standard
 set(CMAKE_CXX_STANDARD 17)
@@ -116,16 +135,34 @@ elseif(NOT NEONUFFT_THREADING_UPPER STREQUAL "NATIVE")
   message(FATAL_ERROR "Invalid NEONUFFT_THREADING value")
 endif()
 
-# generate config.h
-configure_file(cmake/config.h.in ${PROJECT_BINARY_DIR}/neonufft/config.h)
+if(NEONUFFT_CUDA)
+	enable_language(CUDA)
+	find_package(CUDAToolkit MODULE REQUIRED)
 
-list(APPEND NEONUFFT_INCLUDE_DIRS ${PROJECT_SOURCE_DIR}/contrib)
+	list(APPEND NEONUFFT_GPU_EXTERNAL_LIBS CUDA::cufft)
+	list(APPEND NEONUFFT_GPU_EXTERNAL_LIBS_PUBLIC CUDA::cudart)
+endif()
+
+if(NEONUFFT_ROCM)
+  enable_language(HIP)
+
+  find_package(hip CONFIG REQUIRED)
+  find_package(hipfft CONFIG REQUIRED)
+  find_package(hipcub CONFIG REQUIRED)
+
+  list(APPEND NEONUFFT_GPU_EXTERNAL_LIBS hip::hipfft hip::hipcub)
+  list(APPEND NEONUFFT_GPU_EXTERNAL_LIBS_PUBLIC hip::host)
+endif()
+
+# generate config.h
+configure_file(cmake/config.h.in ${PROJECT_BINARY_DIR}/include/neonufft/config.h)
+
 list(APPEND NEONUFFT_INCLUDE_DIRS ${PROJECT_SOURCE_DIR}/src)
 list(APPEND NEONUFFT_INCLUDE_DIRS ${PROJECT_SOURCE_DIR}/include)
-list(APPEND NEONUFFT_INCLUDE_DIRS ${PROJECT_BINARY_DIR})
+list(APPEND NEONUFFT_INCLUDE_DIRS ${PROJECT_BINARY_DIR}/include)
 
-add_subdirectory(contrib)
-add_subdirectory(src)
+add_subdirectory(src/contrib)
+add_subdirectory(src/neonufft)
 if(NEONUFFT_BUILD_TESTS)
   add_subdirectory(tests)
 endif()

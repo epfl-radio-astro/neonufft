@@ -1,0 +1,111 @@
+name: CI
+
+on: [push, pull_request]
+
+jobs:
+  #########################
+  # Build and test with GCC
+  #########################
+  build-test-gcc-cpu:
+    # The type of runner that the job will run on
+    runs-on: ubuntu-24.04
+
+    steps:
+    # Checks-out your repository under $GITHUB_WORKSPACE
+    - uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC sudo apt-get install -y make g++ wget git make cmake libfftw3-dev
+
+    - name: Build
+      run: |
+        cd ${GITHUB_WORKSPACE}
+        mkdir -p build
+        cd build
+        cmake .. -DNEONUFFT_BUILD_TESTS=ON
+        make -j2
+
+    - name: Run tests
+      run: |
+        ${GITHUB_WORKSPACE}/build/bin/run_tests
+
+  ###########################
+  # Build and test with clang
+  ###########################
+  build-test-clang-cpu:
+    # The type of runner that the job will run on
+    runs-on: ubuntu-24.04
+
+    steps:
+    # Checks-out your repository under $GITHUB_WORKSPACE
+    - uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC sudo apt-get install -y make clang wget git make cmake libfftw3-dev
+
+    - name: Build
+      run: |
+        cd ${GITHUB_WORKSPACE}
+        mkdir -p build
+        cd build
+        CXX=clang++ cmake .. -DNEONUFFT_BUILD_TESTS=ON -DNEONUFFT_THREADING=NATIVE -DCMAKE_CXX_FLAGS="-march=native" -DNEONUFFT_MULTI_ARCH=OFF
+        make -j2
+
+    - name: Run tests
+      run: |
+        ${GITHUB_WORKSPACE}/build/bin/run_tests
+
+  ##################
+  # Build  with CUDA
+  ##################
+  build-test-gcc-cuda:
+    # The type of runner that the job will run on
+    runs-on: ubuntu-24.04
+    container: nvidia/cuda:12.6.1-devel-ubuntu24.04
+
+    steps:
+    # Checks-out your repository under $GITHUB_WORKSPACE
+    - uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: |
+        apt-get update
+        DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC apt-get install -y make g++ wget git make cmake libfftw3-dev
+
+    - name: Build
+      run: |
+        cd ${GITHUB_WORKSPACE}
+        mkdir -p build
+        cd build
+        cmake .. -DNEONUFFT_BUILD_TESTS=ON -DCMAKE_CXX_FLAGS="-march=native" -DNEONUFFT_MULTI_ARCH=OFF -DNEONUFFT_GPU=CUDA -DCMAKE_CUDA_ARCHITECTURES=90
+        make -j2
+
+  ##################
+  # Build  with ROCm
+  ##################
+  build-test-clang-rocm:
+    # The type of runner that the job will run on
+    runs-on: ubuntu-24.04
+    container: rocm/dev-ubuntu-24.04:6.4-complete
+
+    steps:
+    # Checks-out your repository under $GITHUB_WORKSPACE
+    - uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: |
+        apt-get update
+        DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC apt-get install -y make g++ wget git make cmake libfftw3-dev
+
+    - name: Build
+      run: |
+        cd ${GITHUB_WORKSPACE}
+        mkdir -p build
+        cd build
+        export CXX=/opt/rocm/bin/amdclang++
+        cmake .. -DNEONUFFT_BUILD_TESTS=ON -DNEONUFFT_THREADING=NATIVE -DCMAKE_CXX_FLAGS="-march=native" -DNEONUFFT_MULTI_ARCH=OFF -DNEONUFFT_GPU=ROCM -DCMAKE_HIP_ARCHITECTURES=gfx942 -DCMAKE_PREFIX_PATH=/opt/rocm
+        make -j2

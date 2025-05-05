@@ -28,6 +28,10 @@ enum NeonufftError {
    */
   NEONUFFT_INPUT_ERROR,
   /**
+   * GPU error.
+   */
+  NEONUFFT_GPU_ERROR,
+  /**
    * Not Implemented error.
    */
   NEONUFFT_NOT_IMPLEMENTED_ERROR,

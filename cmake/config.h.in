@@ -1,6 +1,5 @@
 #pragma once
 
-// #cmakedefine NEONUFFT_CUDA
 #cmakedefine NEONUFFT_VERSION "@NEONUFFT_VERSION@"
 
 #include <neonufft/neonufft_export.h>
@@ -8,3 +7,5 @@
 #cmakedefine NEONUFFT_MULTI_ARCH
 #cmakedefine NEONUFFT_OMP
 #cmakedefine NEONUFFT_TBB
+#cmakedefine NEONUFFT_CUDA
+#cmakedefine NEONUFFT_ROCM

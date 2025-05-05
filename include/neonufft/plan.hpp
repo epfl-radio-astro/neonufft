@@ -1,6 +1,7 @@
 #pragma once
 
 #include <neonufft/config.h>
+// ---
 
 #include <neonufft/types.hpp>
 #include <neonufft/enums.h>
@@ -22,7 +23,7 @@ struct NEONUFFT_EXPORT Options {
   int num_threads = 0;
   bool sort_input = true;
   bool sort_output = true;
-  bool kernel_approximation = true;
+  bool kernel_approximation = false;//TODO: change to true
   NeonufftModeOrder order = NEONUFFT_MODE_ORDER_CMCL;
   NeonufftKernelType kernel_type = NEONUFFT_ES_KERNEL;
 };
@@ -42,11 +43,7 @@ public:
                         std::array<IntType, DIM> in_strides,
                         std::complex<T> *out);
 
-  void set_modes(std::array<IntType, DIM> modes);
-
-  void set_nu_points(IntType num_nu, std::array<const T *, DIM> loc);
-
-  // TODO: update sign?
+  void set_points(IntType num_nu, std::array<const T *, DIM> loc);
 
 private:
   std::unique_ptr<void, void (*)(void *)> impl_;
@@ -64,12 +61,12 @@ public:
                                         std::array<T, DIM> output_max);
 
   PlanT3(Options opt, int sign, IntType num_in,
-         std::array<const T *, DIM> input_points, IntType num_out,
-         std::array<const T *, DIM> output_points);
+         std::array<const T*, DIM> input_points, IntType num_out,
+         std::array<const T*, DIM> output_points, IntType batch_size = 1);
 
   PlanT3(Options opt, int sign, std::array<T, DIM> input_min,
          std::array<T, DIM> input_max, std::array<T, DIM> output_min,
-         std::array<T, DIM> output_max);
+         std::array<T, DIM> output_max, IntType batch_size = 1);
 
   void set_input_points(IntType num_in,
                         std::array<const T *, DIM> input_points);
@@ -77,9 +74,11 @@ public:
   void set_output_points(IntType num_out,
                          std::array<const T *, DIM> output_points);
 
-  void add_input(const std::complex<T> *in);
+  void add_input(const std::complex<T>* in, IntType bdist = 0);
 
-  void transform(std::complex<T> *out);
+  void transform(std::complex<T>* out, IntType bdist = 0);
+
+  void reset();
 
 private:
   std::unique_ptr<void, void (*)(void *)> impl_;

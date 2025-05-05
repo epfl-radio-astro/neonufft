@@ -1,11 +1,12 @@
 include(CMakeFindDependencyMacro)
-macro(find_dependency_components)
-	if(${ARGV0}_FOUND AND ${CMAKE_VERSION} VERSION_LESS "3.15.0")
-		# find_dependency does not handle new components correctly before 3.15.0
-		set(${ARGV0}_FOUND FALSE)
-	endif()
-	find_dependency(${ARGV})
-endmacro()
+
+if(NEONUFFT_CUDA)
+	find_dependency(CUDAToolkit MODULE)
+endif()
+
+if(NEONUFFT_ROCM)
+  message(FATAL_ERROR "ROCM backend not yet implemented")
+endif()
 
 # find_dependency may set neonufft_FOUND to false, so only add neonufft if everything required was found
 if(NOT DEFINED neonufft_FOUND OR neonufft_FOUND)
