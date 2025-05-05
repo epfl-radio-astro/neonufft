@@ -65,7 +65,7 @@ jobs:
   build-test-gcc-cuda:
     # The type of runner that the job will run on
     runs-on: ubuntu-24.04
-    container: nvidia/cuda:12.6.1-base-ubuntu24.04
+    container: nvidia/cuda:12.6.1-devel-ubuntu24.04
 
     steps:
     # Checks-out your repository under $GITHUB_WORKSPACE
@@ -90,7 +90,7 @@ jobs:
   build-test-gcc-rocm:
     # The type of runner that the job will run on
     runs-on: ubuntu-24.04
-    container: rocm/dev-ubuntu-24.04:6.4
+    container: rocm/dev-ubuntu-24.04:6.4-complete
 
     steps:
     # Checks-out your repository under $GITHUB_WORKSPACE
@@ -106,5 +106,5 @@ jobs:
         cd ${GITHUB_WORKSPACE}
         mkdir -p build
         cd build
-        cmake .. -DNEONUFFT_BUILD_TESTS=ON -DCMAKE_CXX_FLAGS="-march=native" -DNEONUFFT_MULTI_ARCH=OFF -DNEONUFFT_GPU=ROCM -DCMAKE_HIP_ARCHITECTURES=gfx942
+        cmake .. -DNEONUFFT_BUILD_TESTS=ON -DCMAKE_CXX_FLAGS="-march=native" -DNEONUFFT_MULTI_ARCH=OFF -DNEONUFFT_GPU=ROCM -DCMAKE_HIP_ARCHITECTURES=gfx942 -DCMAKE_PREFIX_PATH=/opt/rocm
         make -j2
