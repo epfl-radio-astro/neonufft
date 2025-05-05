@@ -106,5 +106,6 @@ jobs:
         cd ${GITHUB_WORKSPACE}
         mkdir -p build
         cd build
+        export CXX=/opt/rocm/bin/amdclang++
         cmake .. -DNEONUFFT_BUILD_TESTS=ON -DCMAKE_CXX_FLAGS="-march=native" -DNEONUFFT_MULTI_ARCH=OFF -DNEONUFFT_GPU=ROCM -DCMAKE_HIP_ARCHITECTURES=gfx942 -DCMAKE_PREFIX_PATH=/opt/rocm
         make -j2
