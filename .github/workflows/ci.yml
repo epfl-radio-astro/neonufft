@@ -1,0 +1,32 @@
+name: CI
+
+on: [push, pull_request]
+
+jobs:
+  #########################
+  # Build and test with GCC
+  #########################
+  build-test-gcc-cpu:
+    # The type of runner that the job will run on
+    runs-on: ubuntu-24.04
+
+    steps:
+    # Checks-out your repository under $GITHUB_WORKSPACE
+    - uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC sudo apt-get install -y make g++ wget git make cmake libfftw3-dev
+
+    - name: Build
+      run: |
+        cd ${GITHUB_WORKSPACE}
+        mkdir -p build
+        cd build
+        cmake .. -DNEONUFFT_BUILD_TESTS=ON
+        make -j2
+
+    - name: Run tests
+      run: |
+        ${GITHUB_WORKSPACE}/build/bin/run_tests
