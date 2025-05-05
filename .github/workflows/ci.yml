@@ -73,8 +73,8 @@ jobs:
 
     - name: Install dependencies
       run: |
-        sudo apt-get update
-        DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC sudo apt-get install -y make g++ wget git make cmake libfftw3-dev
+        apt-get update
+        DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC apt-get install -y make g++ wget git make cmake libfftw3-dev
 
     - name: Build
       run: |
@@ -98,8 +98,8 @@ jobs:
 
     - name: Install dependencies
       run: |
-        sudo apt-get update
-        DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC sudo apt-get install -y make g++ wget git make cmake libfftw3-dev
+        apt-get update
+        DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC apt-get install -y make g++ wget git make cmake libfftw3-dev
 
     - name: Build
       run: |
