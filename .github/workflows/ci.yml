@@ -87,7 +87,7 @@ jobs:
   ##################
   # Build  with ROCm
   ##################
-  build-test-gcc-rocm:
+  build-test-clang-rocm:
     # The type of runner that the job will run on
     runs-on: ubuntu-24.04
     container: rocm/dev-ubuntu-24.04:6.4-complete
@@ -107,5 +107,5 @@ jobs:
         mkdir -p build
         cd build
         export CXX=/opt/rocm/bin/amdclang++
-        cmake .. -DNEONUFFT_BUILD_TESTS=ON -DCMAKE_CXX_FLAGS="-march=native" -DNEONUFFT_MULTI_ARCH=OFF -DNEONUFFT_GPU=ROCM -DCMAKE_HIP_ARCHITECTURES=gfx942 -DCMAKE_PREFIX_PATH=/opt/rocm
+        cmake .. -DNEONUFFT_BUILD_TESTS=ON -DNEONUFFT_THREADING=NATIVE -DCMAKE_CXX_FLAGS="-march=native" -DNEONUFFT_MULTI_ARCH=OFF -DNEONUFFT_GPU=ROCM -DCMAKE_HIP_ARCHITECTURES=gfx942 -DCMAKE_PREFIX_PATH=/opt/rocm
         make -j2
