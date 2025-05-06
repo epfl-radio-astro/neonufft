@@ -35,13 +35,6 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
 	)
 endif()
 
-set(NEONUFFT_BUILD_TYPE "OFF" CACHE STRING "If set, overrides the CMAKE_BUILD_TYPE variable.")
-set_property(CACHE NEONUFFT_BUILD_TYPE PROPERTY STRINGS
-	"Debug" "Release" "MinSizeRel" "RelWithDebInfo")
-if(NEONUFFT_BUILD_TYPE)
-	set(CMAKE_BUILD_TYPE ${NEONUFFT_BUILD_TYPE} CACHE STRING "Build type" FORCE)
-endif()
-
 option(NEONUFFT_MULTI_ARCH "Build kernels for multiple CPU architectues with dynamic dispatch. When disabled, arch flags should be set through CMAKE_CXX_FLAGS." ON)
 
 option(NEONUFFT_BUNDLED_LIBS "Use all bundled libraries" ON)
