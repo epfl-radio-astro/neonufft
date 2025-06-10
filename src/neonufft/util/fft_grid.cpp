@@ -115,11 +115,6 @@ struct FFTW<float> {
   static auto plan_with_nthreads(ARGS&&... args) -> void {
     fftwf_plan_with_nthreads(args...);
   }
-
-  template <typename... ARGS>
-  static auto planner_nthreads() -> int {
-    return fftwf_planner_nthreads();
-  }
 };
 
 } // namespace
@@ -171,7 +166,6 @@ FFTGrid<T, DIM>::FFTGrid(IntType num_threads, IndexType shape, int sign,
   auto in_out = reinterpret_cast<typename FFTW<T>::ComplexType *>(grid_.data());
 
   // set threads
-  const auto fftw_threads_save = FFTW<T>::planner_nthreads();
   FFTW<T>::plan_with_nthreads(num_threads);
 
   auto new_plan = FFTW<T>::plan_many_dft(
@@ -187,8 +181,6 @@ FFTGrid<T, DIM>::FFTGrid(IntType num_threads, IndexType shape, int sign,
         }
       });
 
-  // restore number of threads used for creating plans
-  FFTW<T>::plan_with_nthreads(fftw_threads_save);
 }
 
 template <typename T, std::size_t DIM> void FFTGrid<T, DIM>::transform() {
