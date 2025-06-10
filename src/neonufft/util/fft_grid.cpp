@@ -68,11 +68,6 @@ struct FFTW<double> {
   static auto plan_with_nthreads(ARGS&&... args) -> void {
     fftw_plan_with_nthreads(args...);
   }
-
-  template <typename... ARGS>
-  static auto planner_nthreads() -> int {
-    return fftw_planner_nthreads();
-  }
 };
 
 template <>
