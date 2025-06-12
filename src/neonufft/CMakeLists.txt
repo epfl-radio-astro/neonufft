@@ -88,7 +88,6 @@ write_basic_package_version_file(
 	COMPATIBILITY AnyNewerVersion
 )
 
-export(TARGETS neonufft NAMESPACE neonufft:: FILE ${NEONUFFT_CONFIG_OUT_DIR}/${NEONUFFT_TARGETS_FILE})
 configure_file(${PROJECT_SOURCE_DIR}/cmake/${NEONUFFT_CONFIG_FILE}
 	"${NEONUFFT_CONFIG_OUT_DIR}/${NEONUFFT_CONFIG_FILE}"
 	@ONLY

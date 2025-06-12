@@ -106,11 +106,13 @@ if(NEONUFFT_BUNDLED_HIGHWAY)
     URL_MD5 8b3d090a2d081730b40bca5ae0d65f11
   )
   FetchContent_MakeAvailable(hwy)
-  list(APPEND NEONUFFT_EXTERNAL_LIBS hwy)
+  if(NOT TARGET hwy::hwy)
+	add_library(hwy::hwy ALIAS hwy)
+  endif()
 else()
   find_package(hwy CONFIG REQUIRED)
-  list(APPEND NEONUFFT_EXTERNAL_LIBS hwy::hwy)
 endif()
+list(APPEND NEONUFFT_EXTERNAL_LIBS hwy::hwy)
 
 
 set(NEONUFFT_OMP OFF)
